@@ -21,7 +21,18 @@ from services.auth_service import PERMISOS
 class ApiClient:
     def __init__(self, base_url: str = API_BASE_URL):
         self._base_url = base_url.rstrip("/")
-        self._client = httpx.Client(base_url=self._base_url, timeout=10.0)
+        # Cada llamada de este cliente corre en el hilo principal de
+        # Tkinter (bloqueante) — si el timeout es alto, un problema de
+        # red (VPN, firewall, antivirus corporativo interceptando la
+        # conexión) congela la ventana entera durante ese tiempo sin
+        # ningún indicador visual, y Windows la marca "Sin respuesta".
+        # connect corto porque si no hay ni siquiera conexión TCP no
+        # tiene sentido esperar mucho; read más permisivo para no
+        # cortar de más un reporte grande (kardex/excel).
+        self._client = httpx.Client(
+            base_url=self._base_url,
+            timeout=httpx.Timeout(connect=4.0, read=12.0, write=12.0, pool=4.0),
+        )
         self._token: Optional[str] = None
         self.usuario: Optional[dict] = None
 
