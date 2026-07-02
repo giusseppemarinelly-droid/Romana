@@ -24,3 +24,15 @@ bcrypt==4.2.0               # Hash seguro de contraseñas de usuarios
 
 # --- Utilidades ---
 python-dateutil==2.9.0      # Manejo avanzado de fechas
+
+# --- Backend (API + tiempo real) ---
+fastapi==0.115.6             # Framework del backend HTTP
+uvicorn[standard]==0.34.0    # Servidor ASGI (incluye soporte websockets)
+pyjwt==2.10.1                # Tokens JWT para autenticación stateless
+httpx==0.28.1                # Cliente HTTP usado por la GUI para hablar con el backend
+websockets==14.1             # Cliente websocket usado por la GUI
+alembic==1.14.0               # Migraciones de base de datos
+
+# --- Testing ---
+pytest==8.3.4
+pytest-asyncio==0.25.0

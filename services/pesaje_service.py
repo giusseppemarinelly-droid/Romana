@@ -9,6 +9,7 @@
 
 from datetime import datetime
 from typing import Optional
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import joinedload
 from database.engine import SessionLocal
 from database.models import (
@@ -22,6 +23,25 @@ from services.auth_service import get_usuario_actual
 # ============================================================
 # HELPER: cargar relaciones de Pesada
 # ============================================================
+def _resolver_usuario_id(usuario_id: Optional[int]) -> Optional[int]:
+    """
+    Resuelve qué usuario_id usar en una transición de estado.
+
+    Backend HTTP: pasa `usuario_id` explícito (viene del JWT vía
+    `Depends(get_current_user)`) — cada request es de un usuario distinto,
+    no hay estado global que consultar.
+
+    GUI vieja (no migrada aún): no pasa `usuario_id`, así que se cae al
+    global `_usuario_actual` de `auth_service` por compatibilidad. Se
+    elimina este fallback cuando termine la fase de limpieza de la
+    migración a cliente-servidor.
+    """
+    if usuario_id is not None:
+        return usuario_id
+    usuario = get_usuario_actual()
+    return usuario.id if usuario else None
+
+
 def _pesada_options():
     return [
         joinedload(Pesada.vehiculo),
@@ -246,7 +266,8 @@ def registrar_entrada(
     lote_id: Optional[int] = None,
     remolque_id: Optional[int] = None,
     contenedor_id: Optional[int] = None,
-    observaciones: str = ""
+    observaciones: str = "",
+    usuario_id: Optional[int] = None
 ) -> dict:
     """
     PASO 1: Registra la entrada del camión a la báscula.
@@ -274,7 +295,6 @@ def registrar_entrada(
                            f"Debe completar o anular esa operación primero."
             }
 
-        usuario = get_usuario_actual()
         numero_ticket = generar_numero_ticket(db)
 
         nueva_pesada = Pesada(
@@ -294,12 +314,24 @@ def registrar_entrada(
             contenedor_id=contenedor_id,
             empresa_transportista=empresa_transportista.strip() if empresa_transportista else None,
             empresa_cliente_proveedor=empresa_cliente_proveedor.strip() if empresa_cliente_proveedor else None,
-            usuario_entrada_id=usuario.id if usuario else None,
+            usuario_entrada_id=_resolver_usuario_id(usuario_id),
             observaciones=observaciones
         )
 
         db.add(nueva_pesada)
-        db.commit()
+        try:
+            db.commit()
+        except IntegrityError:
+            # Red de seguridad ante condiciones de carrera: el chequeo de
+            # "activa" de arriba es check-then-act y dos requests
+            # concurrentes para el mismo vehículo podrían pasarlo ambas.
+            # El índice único parcial ux_pesada_activa_por_vehiculo (ver
+            # migración Alembic) es quien realmente lo impide a nivel BD.
+            db.rollback()
+            return {
+                "exito": False,
+                "mensaje": "El vehículo ya tiene una pesada activa (detectado por la base de datos). Intente de nuevo."
+            }
         db.refresh(nueva_pesada)
         nueva_pesada = db.query(Pesada).options(*_pesada_options()).filter_by(
             id=nueva_pesada.id).first()
@@ -321,7 +353,7 @@ def registrar_entrada(
 # ============================================================
 # PASO 2: CAPTURAR PESO DE SALIDA → va a Centro de Costos
 # ============================================================
-def capturar_peso_salida(pesada_id: int, peso_capturado: float) -> dict:
+def capturar_peso_salida(pesada_id: int, peso_capturado: float, usuario_id: Optional[int] = None) -> dict:
     """
     PASO 2: El camión volvió cargado, se captura el 2° peso.
     Se envía a la cola de Centro de Costos para aprobación.
@@ -362,9 +394,7 @@ def capturar_peso_salida(pesada_id: int, peso_capturado: float) -> dict:
         pesada.fecha_captura = datetime.now()
         pesada.estado = "pendiente_aprobacion"
         pesada.motivo_rechazo = None  # Limpiar rechazo anterior si hubo
-
-        usuario = get_usuario_actual()
-        pesada.usuario_salida_id = usuario.id if usuario else None
+        pesada.usuario_salida_id = _resolver_usuario_id(usuario_id)
 
         db.commit()
         pesada = db.query(Pesada).options(*_pesada_options()).filter_by(
@@ -387,7 +417,7 @@ def capturar_peso_salida(pesada_id: int, peso_capturado: float) -> dict:
 # ============================================================
 # PASO 3a: APROBAR (Centro de Costos)
 # ============================================================
-def aprobar_pesada(pesada_id: int) -> dict:
+def aprobar_pesada(pesada_id: int, usuario_id: Optional[int] = None) -> dict:
     """
     PASO 3a: Centro de Costos aprueba la pesada.
     Estado resultante: "aprobado"
@@ -405,9 +435,8 @@ def aprobar_pesada(pesada_id: int) -> dict:
                 "mensaje": f"Solo se pueden aprobar pesadas en estado 'pendiente_aprobacion'. Estado actual: {pesada.estado}"
             }
 
-        usuario = get_usuario_actual()
         pesada.estado = "aprobado"
-        pesada.aprobado_por_id = usuario.id if usuario else None
+        pesada.aprobado_por_id = _resolver_usuario_id(usuario_id)
         pesada.fecha_aprobacion = datetime.now()
 
         db.commit()
@@ -430,7 +459,7 @@ def aprobar_pesada(pesada_id: int) -> dict:
 # ============================================================
 # PASO 3b: RECHAZAR (Centro de Costos)
 # ============================================================
-def rechazar_pesada(pesada_id: int, motivo: str) -> dict:
+def rechazar_pesada(pesada_id: int, motivo: str, usuario_id: Optional[int] = None) -> dict:
     """
     PASO 3b: Centro de Costos rechaza la pesada.
     Vuelve al estado "rechazado" — Romana debe volver a capturar.
@@ -452,10 +481,9 @@ def rechazar_pesada(pesada_id: int, motivo: str) -> dict:
         if not motivo or len(motivo.strip()) < 3:
             return {"exito": False, "mensaje": "Debe ingresar un motivo de rechazo"}
 
-        usuario = get_usuario_actual()
         pesada.estado = "rechazado"
         pesada.motivo_rechazo = motivo.strip()
-        pesada.aprobado_por_id = usuario.id if usuario else None
+        pesada.aprobado_por_id = _resolver_usuario_id(usuario_id)
         pesada.fecha_aprobacion = datetime.now()
 
         db.commit()
@@ -480,7 +508,8 @@ def completar_pesaje(
     orden_compra: str = "",
     cantidad: Optional[float] = None,
     precintos: str = "",
-    observaciones: str = ""
+    observaciones: str = "",
+    usuario_id: Optional[int] = None
 ) -> dict:
     """
     PASO 4: Romana llena los datos finales y cierra la operación.
@@ -506,9 +535,7 @@ def completar_pesaje(
         pesada.observaciones = observaciones.strip() if observaciones else None
         pesada.estado = "completado"
         pesada.fecha_salida = datetime.now()
-
-        usuario = get_usuario_actual()
-        pesada.usuario_salida_id = usuario.id if usuario else None
+        pesada.usuario_salida_id = _resolver_usuario_id(usuario_id)
 
         db.commit()
         pesada = db.query(Pesada).options(*_pesada_options()).filter_by(
@@ -538,6 +565,10 @@ def anular_pesada(pesada_id: int, motivo: str) -> dict:
             return {"exito": False, "mensaje": "Pesada no encontrada"}
         if pesada.anulada:
             return {"exito": False, "mensaje": "La pesada ya está anulada"}
+        if pesada.estado == "completado":
+            # Mandato de integridad: un pesaje cerrado (completado) no se
+            # puede alterar manualmente, ni siquiera para anularlo.
+            return {"exito": False, "mensaje": "No se puede anular una pesada ya completada (registro cerrado e inmutable)"}
         if not motivo or len(motivo.strip()) < 5:
             return {"exito": False, "mensaje": "Debe ingresar un motivo de anulación (mínimo 5 caracteres)"}
 
@@ -557,7 +588,7 @@ def anular_pesada(pesada_id: int, motivo: str) -> dict:
 # ============================================================
 # CORTE
 # ============================================================
-def realizar_corte(observaciones: str = "") -> dict:
+def realizar_corte(observaciones: str = "", usuario_id: Optional[int] = None) -> dict:
     from database.models import Corte
     db = SessionLocal()
     try:
@@ -579,15 +610,13 @@ def realizar_corte(observaciones: str = "") -> dict:
         nuevo_num = ultimo_num + 1
         _set_config(db, "corte_actual", str(nuevo_num))
 
-        usuario = get_usuario_actual()
-
         nuevo_corte = Corte(
             numero_corte=nuevo_num,
             fecha_inicio=fecha_inicio,
             fecha_fin=fecha_fin,
             total_pesadas=total_pesadas,
             total_neto_kg=round(total_neto, 2),
-            usuario_id=usuario.id if usuario else 1,
+            usuario_id=_resolver_usuario_id(usuario_id) or 1,
             observaciones=observaciones,
             created_at=datetime.now()
         )

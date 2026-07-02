@@ -14,7 +14,12 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
 # Configuración de PostgreSQL
 # Formato: postgresql+pg8000://<usuario>:<contraseña>@<host>:<puerto>/<nombre_bd>
-DATABASE_URL = "postgresql+pg8000://postgres:postgres@localhost:5433/romana_db"
+# Override vía ROMANA_DATABASE_URL — lo usa backend/tests/conftest.py para
+# apuntar a una BD de pruebas aislada en vez de la BD real.
+DATABASE_URL = os.environ.get(
+    "ROMANA_DATABASE_URL",
+    "postgresql+pg8000://postgres:postgres@localhost:5433/romana_db",
+)
 
 REPORTS_DIR = os.path.join(BASE_DIR, "reports", "output")
 TEMPLATES_DIR = os.path.join(BASE_DIR, "reports", "templates")
@@ -105,6 +110,20 @@ UI = {
     "fuente":             "Segoe UI",
     "fuente_size":        12,
 }
+
+# -------------------------------------------------------
+# CONFIGURACIÓN DEL BACKEND (API + WebSockets)
+# -------------------------------------------------------
+# JWT_SECRET_KEY: en producción debe venir de una variable de entorno,
+# nunca quedar hardcodeada en el repo. Se deja un default solo para
+# desarrollo local.
+JWT_SECRET_KEY  = os.environ.get("ROMANA_JWT_SECRET", "dev-secret-cambiar-en-produccion")
+JWT_ALGORITHM   = "HS256"
+JWT_EXPIRE_MINUTES = 12 * 60   # 12 horas — cubre un turno de operador
+
+API_HOST = os.environ.get("ROMANA_API_HOST", "0.0.0.0")
+API_PORT = int(os.environ.get("ROMANA_API_PORT", "8000"))
+API_BASE_URL = os.environ.get("ROMANA_API_URL", "http://localhost:8000")
 
 # -------------------------------------------------------
 # CREAR DIRECTORIOS SI NO EXISTEN

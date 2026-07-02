@@ -98,65 +98,77 @@ def tiene_permiso(accion: str) -> bool:
 # LOGIN / LOGOUT
 # ============================================================
 
-def login(username: str, password: str) -> dict:
+def verificar_credenciales(db, username: str, password: str) -> dict:
     """
-    Intenta autenticar a un usuario con su usuario y contraseña.
+    Verifica usuario/contraseña contra la BD SIN tocar la sesión global
+    (`_usuario_actual`). Es la función que usa el backend HTTP: cada
+    request es independiente, no hay "usuario logueado" a nivel de proceso.
 
-    Args:
-        username: Nombre de usuario
-        password: Contraseña en texto plano
+    Recibe una sesión `db` ya abierta (el llamador es responsable de
+    cerrarla) para poder actualizar `last_login` sin abrir una segunda
+    sesión.
 
     Returns:
-        dict con:
-          - "exito": True/False
-          - "mensaje": Mensaje descriptivo
-          - "usuario": Objeto Usuario si exitoso, None si falló
+        dict con "exito", "mensaje", "usuario" (objeto Usuario o None).
     """
-    global _usuario_actual
-
     if not username or not password:
         return {"exito": False, "mensaje": "Usuario y contraseña son requeridos", "usuario": None}
 
+    usuario = db.query(Usuario).filter(
+        Usuario.username == username.strip().lower()
+    ).first()
+
+    if not usuario:
+        return {"exito": False, "mensaje": "Usuario no encontrado", "usuario": None}
+
+    if not usuario.activo:
+        return {"exito": False, "mensaje": "Usuario desactivado. Contacte al administrador", "usuario": None}
+
+    password_correcta = bcrypt.checkpw(
+        password.encode("utf-8"),
+        usuario.password_hash.encode("utf-8")
+    )
+
+    if not password_correcta:
+        return {"exito": False, "mensaje": "Contraseña incorrecta", "usuario": None}
+
+    usuario.last_login = datetime.now()
+    db.commit()
+    db.refresh(usuario)
+
+    nivel_nombre = {1: "Administrador", 2: "Supervisor", 3: "Operador", 4: "Centro de Costos"}
+    return {
+        "exito": True,
+        "mensaje": f"Bienvenido, {usuario.nombre_completo}",
+        "usuario": usuario,
+        "nivel_nombre": nivel_nombre.get(usuario.nivel, "Desconocido")
+    }
+
+
+def login(username: str, password: str) -> dict:
+    """
+    Autentica y además guarda el usuario en la sesión global `_usuario_actual`.
+
+    NOTA DE MIGRACIÓN: esta función y `_usuario_actual` existen solo para
+    las vistas de `gui/` que todavía no fueron migradas a la API HTTP
+    (cliente-servidor). El backend (`backend/routers/auth.py`) usa
+    `verificar_credenciales()` directamente y nunca toca este global,
+    porque en HTTP cada request puede venir de un usuario distinto —
+    un singleton de proceso sería incorrecto ahí. Cuando todas las
+    vistas de `gui/` pasen a usar `client/api_client.py` (fase de
+    limpieza final de la migración), esta función y el global se eliminan.
+
+    Returns:
+        dict con "exito", "mensaje", "usuario" (objeto Usuario o None).
+    """
+    global _usuario_actual
+
     db = SessionLocal()
     try:
-        # Buscar usuario en la base de datos
-        usuario = db.query(Usuario).filter(
-            Usuario.username == username.strip().lower()
-        ).first()
-
-        # ¿Existe el usuario?
-        if not usuario:
-            return {"exito": False, "mensaje": "Usuario no encontrado", "usuario": None}
-
-        # ¿Está activo?
-        if not usuario.activo:
-            return {"exito": False, "mensaje": "Usuario desactivado. Contacte al administrador", "usuario": None}
-
-        # ¿La contraseña es correcta?
-        password_correcta = bcrypt.checkpw(
-            password.encode("utf-8"),
-            usuario.password_hash.encode("utf-8")
-        )
-
-        if not password_correcta:
-            return {"exito": False, "mensaje": "Contraseña incorrecta", "usuario": None}
-
-        # ✅ Login exitoso
-        usuario.last_login = datetime.now()
-        db.commit()
-        db.refresh(usuario)
-
-        # Guardar en sesión global
-        _usuario_actual = usuario
-
-        nivel_nombre = {1: "Administrador", 2: "Supervisor", 3: "Operador"}
-        return {
-            "exito": True,
-            "mensaje": f"Bienvenido, {usuario.nombre_completo}",
-            "usuario": usuario,
-            "nivel_nombre": nivel_nombre.get(usuario.nivel, "Desconocido")
-        }
-
+        resultado = verificar_credenciales(db, username, password)
+        if resultado["exito"]:
+            _usuario_actual = resultado["usuario"]
+        return resultado
     except Exception as e:
         return {"exito": False, "mensaje": f"Error de sistema: {str(e)}", "usuario": None}
     finally:

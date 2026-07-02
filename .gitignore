@@ -4,3 +4,4 @@ __pycache__/
 reports/output/
 .env
 *.db
+.pytest_cache/

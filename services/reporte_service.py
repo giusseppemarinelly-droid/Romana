@@ -2,9 +2,9 @@
 # services/reporte_service.py — Generación de Reportes PDF y Excel
 # ============================================================
 
-import os
+import io
 from datetime import datetime
-from config import EMPRESA, REPORTS_DIR, TICKET
+from config import EMPRESA
 
 # ---- ReportLab (PDF) ----
 from reportlab.lib.pagesizes import letter, A4
@@ -29,13 +29,6 @@ from openpyxl.utils import get_column_letter
 # HELPERS
 # =============================================================
 
-def _nombre_archivo(prefijo: str, extension: str) -> str:
-    """Genera un nombre de archivo con timestamp."""
-    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-    nombre = f"{prefijo}_{ts}.{extension}"
-    return os.path.join(REPORTS_DIR, nombre)
-
-
 def _fmt_fecha(dt) -> str:
     """Formatea un datetime o retorna '—'."""
     if dt:
@@ -54,7 +47,7 @@ def _fmt_peso(val) -> str:
 # TICKET DE PESAJE (PDF)
 # =============================================================
 
-def generar_ticket_pdf(pesada) -> str:
+def generar_ticket_pdf(pesada) -> bytes:
     """
     Genera el ticket de pesaje en PDF.
 
@@ -69,11 +62,14 @@ def generar_ticket_pdf(pesada) -> str:
         pesada: Objeto Pesada de la base de datos
 
     Returns:
-        Ruta completa del archivo PDF generado.
+        Contenido del PDF en bytes (Romana y Centro de Costos son
+        máquinas distintas sin disco compartido, así que el reporte se
+        genera en el servidor y se transmite por HTTP en vez de
+        escribirse a un archivo local).
     """
-    ruta = _nombre_archivo(f"TICKET_{pesada.numero_ticket}", "pdf")
+    buffer = io.BytesIO()
     doc = SimpleDocTemplate(
-        ruta,
+        buffer,
         pagesize=A4,
         leftMargin=2*cm, rightMargin=2*cm,
         topMargin=1.5*cm, bottomMargin=1.5*cm
@@ -226,15 +222,14 @@ def generar_ticket_pdf(pesada) -> str:
 
     # ---- Construir PDF ----
     doc.build(elements)
-    print(f"✅ Ticket PDF generado: {ruta}")
-    return ruta
+    return buffer.getvalue()
 
 
 # =============================================================
 # KARDEX DE PESADAS (PDF)
 # =============================================================
 
-def generar_kardex_pdf(pesadas: list, titulo: str = "Kardex de Pesadas") -> str:
+def generar_kardex_pdf(pesadas: list, titulo: str = "Kardex de Pesadas") -> bytes:
     """
     Genera un reporte PDF del Kardex con la lista de pesadas.
 
@@ -243,11 +238,11 @@ def generar_kardex_pdf(pesadas: list, titulo: str = "Kardex de Pesadas") -> str:
         titulo:  Título del reporte
 
     Returns:
-        Ruta del PDF generado.
+        Contenido del PDF en bytes.
     """
-    ruta = _nombre_archivo("KARDEX", "pdf")
+    buffer = io.BytesIO()
     doc = SimpleDocTemplate(
-        ruta, pagesize=letter,
+        buffer, pagesize=letter,
         leftMargin=1.5*cm, rightMargin=1.5*cm,
         topMargin=2*cm, bottomMargin=1.5*cm
     )
@@ -336,15 +331,14 @@ def generar_kardex_pdf(pesadas: list, titulo: str = "Kardex de Pesadas") -> str:
 
     elements.append(tabla)
     doc.build(elements)
-    print(f"✅ Kardex PDF generado: {ruta}")
-    return ruta
+    return buffer.getvalue()
 
 
 # =============================================================
 # KARDEX EN EXCEL
 # =============================================================
 
-def generar_kardex_excel(pesadas: list, titulo: str = "Kardex de Pesadas") -> str:
+def generar_kardex_excel(pesadas: list, titulo: str = "Kardex de Pesadas") -> bytes:
     """
     Genera el Kardex en formato Excel (.xlsx).
 
@@ -353,9 +347,9 @@ def generar_kardex_excel(pesadas: list, titulo: str = "Kardex de Pesadas") -> st
         titulo:  Título del reporte
 
     Returns:
-        Ruta del archivo Excel generado.
+        Contenido del archivo Excel en bytes.
     """
-    ruta = _nombre_archivo("KARDEX", "xlsx")
+    buffer = io.BytesIO()
     wb = Workbook()
     ws = wb.active
     ws.title = "Kardex"
@@ -476,6 +470,5 @@ def generar_kardex_excel(pesadas: list, titulo: str = "Kardex de Pesadas") -> st
     # ---- Congelar encabezado ----
     ws.freeze_panes = "A6"
 
-    wb.save(ruta)
-    print(f"✅ Kardex Excel generado: {ruta}")
-    return ruta
+    wb.save(buffer)
+    return buffer.getvalue()

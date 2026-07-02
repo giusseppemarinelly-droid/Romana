@@ -5,10 +5,14 @@
 from datetime import datetime
 from sqlalchemy import (
     Column, Integer, String, Boolean, DateTime,
-    Numeric, Text, ForeignKey
+    Numeric, Text, ForeignKey, Index, text
 )
 from sqlalchemy.orm import relationship
 from database.engine import Base
+
+_CONDICION_PESADA_ACTIVA = (
+    "estado IN ('en_planta','pendiente_aprobacion','aprobado','rechazado') AND anulada = false"
+)
 
 
 # ============================================================
@@ -235,6 +239,21 @@ class Pesada(Base):
       "anulado"              → Cancelado por cualquier motivo
     """
     __tablename__ = "pesadas"
+    __table_args__ = (
+        # Un vehículo no puede tener 2 pesadas activas a la vez. Se
+        # declara acá (no solo como chequeo en pesaje_service.py) para
+        # que la propia base de datos cierre la condición de carrera
+        # bajo escrituras concurrentes — ver también la migración
+        # Alembic ux_pesada_activa_por_vehiculo, que aplica lo mismo
+        # sobre una BD ya existente.
+        Index(
+            "ux_pesada_activa_por_vehiculo",
+            "vehiculo_id",
+            unique=True,
+            postgresql_where=text(_CONDICION_PESADA_ACTIVA),
+            sqlite_where=text(_CONDICION_PESADA_ACTIVA),
+        ),
+    )
 
     id                       = Column(Integer, primary_key=True, index=True)
     numero_ticket            = Column(String(20), unique=True, nullable=False)
