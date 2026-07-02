@@ -8,11 +8,8 @@
 import customtkinter as ctk
 from tkinter import messagebox, ttk
 from config import UI
-from services.pesaje_service import (
-    listar_pendientes_aprobacion,
-    aprobar_pesada,
-    rechazar_pesada
-)
+from client.api_client import api_client, ApiError
+from client.ws_client import WsClient
 
 
 class CentroCostosView(ctk.CTkFrame):
@@ -32,6 +29,25 @@ class CentroCostosView(ctk.CTkFrame):
         self._pesada_seleccionada = None
         self._construir()
         self._cargar_cola()
+
+        # Refresco automático en tiempo real: reemplaza al botón manual
+        # "↻ Actualizar" como única forma de enterarse de pesadas nuevas.
+        self._ws = WsClient(
+            token=api_client.token,
+            widget=self,
+            on_evento=self._on_evento_ws,
+            on_reconectar=self._cargar_cola,  # resincroniza tras una caída de red
+        )
+        self._ws.iniciar()
+        self.bind("<Destroy>", self._on_destroy)
+
+    def _on_destroy(self, event):
+        if event.widget is self:
+            self._ws.detener()
+
+    def _on_evento_ws(self, evento: dict):
+        if evento.get("tipo") == "pesada_pendiente_aprobacion":
+            self._cargar_cola()
 
     # ----------------------------------------------------------
     def _construir(self):
@@ -163,20 +179,24 @@ class CentroCostosView(ctk.CTkFrame):
         for item in self._tree.get_children():
             self._tree.delete(item)
 
-        pesadas = listar_pendientes_aprobacion()
+        try:
+            pesadas = api_client.listar_pendientes_aprobacion()
+        except ApiError as e:
+            messagebox.showerror("Error de conexión", str(e))
+            pesadas = []
 
         for p in pesadas:
-            tipo = "General" if p.tipo_pesaje == "GENERAL" else "Prod. Term."
-            empresa = (p.empresa_cliente_proveedor or
-                       p.empresa_transportista or "—")
-            self._tree.insert("", "end", iid=str(p.id), values=(
-                p.numero_ticket,
-                p.vehiculo.placa if p.vehiculo else "—",
+            tipo = "General" if p["tipo_pesaje"] == "GENERAL" else "Prod. Term."
+            empresa = (p["empresa_cliente_proveedor"] or
+                       p["empresa_transportista"] or "—")
+            self._tree.insert("", "end", iid=str(p["id"]), values=(
+                p["numero_ticket"],
+                p["vehiculo"]["placa"] if p["vehiculo"] else "—",
                 tipo,
-                (p.producto.nombre[:14] if p.producto else "—"),
-                f"{float(p.peso_bruto or 0):,.0f}",
-                f"{float(p.peso_tara or 0):,.0f}",
-                f"{float(p.peso_neto or 0):,.0f}",
+                (p["producto"]["nombre"][:14] if p["producto"] else "—"),
+                f"{float(p['peso_bruto'] or 0):,.0f}",
+                f"{float(p['peso_tara'] or 0):,.0f}",
+                f"{float(p['peso_neto'] or 0):,.0f}",
                 empresa[:18]
             ))
 
@@ -194,16 +214,11 @@ class CentroCostosView(ctk.CTkFrame):
             return
 
         pesada_id = int(sel[0])
-        from database.engine import SessionLocal
-        from database.models import Pesada
-        from services.pesaje_service import _pesada_options
-
-        db = SessionLocal()
         try:
-            p = db.query(Pesada).options(*_pesada_options()).filter_by(
-                id=pesada_id).first()
-        finally:
-            db.close()
+            p = api_client.obtener_pesada(pesada_id)
+        except ApiError as e:
+            messagebox.showerror("Error de conexión", str(e))
+            return
 
         if p:
             self._pesada_seleccionada = p
@@ -225,14 +240,14 @@ class CentroCostosView(ctk.CTkFrame):
         # Título
         ctk.CTkLabel(
             self._detalle_frame,
-            text=f"Ticket  {p.numero_ticket}",
+            text=f"Ticket  {p['numero_ticket']}",
             font=ctk.CTkFont(family=UI["fuente"], size=16, weight="bold"),
             text_color="#f59e0b"
         ).grid(row=row, column=0, sticky="w", pady=(0, 4)); row += 1
 
         ctk.CTkLabel(
             self._detalle_frame,
-            text=f"Vehículo: {p.vehiculo.placa if p.vehiculo else '—'}",
+            text=f"Vehículo: {p['vehiculo']['placa'] if p['vehiculo'] else '—'}",
             font=ctk.CTkFont(family=UI["fuente"], size=12),
             text_color=UI["color_muted"]
         ).grid(row=row, column=0, sticky="w"); row += 1
@@ -245,11 +260,11 @@ class CentroCostosView(ctk.CTkFrame):
         # Datos del pesaje
         infos = [
             ("Tipo de pesaje",
-             "Pesaje General" if p.tipo_pesaje == "GENERAL" else "Producto Terminado"),
-            ("Producto", p.producto.nombre if p.producto else "—"),
-            ("Empresa transportista", p.empresa_transportista or "—"),
-            ("Empresa cliente/proveedor", p.empresa_cliente_proveedor or "—"),
-            ("Cédula conductor", p.cedula_conductor_libre or "—"),
+             "Pesaje General" if p["tipo_pesaje"] == "GENERAL" else "Producto Terminado"),
+            ("Producto", p["producto"]["nombre"] if p["producto"] else "—"),
+            ("Empresa transportista", p["empresa_transportista"] or "—"),
+            ("Empresa cliente/proveedor", p["empresa_cliente_proveedor"] or "—"),
+            ("Cédula conductor", p["cedula_conductor_libre"] or "—"),
         ]
         for etiq, val in infos:
             self._fila(self._detalle_frame, row, etiq, val); row += 1
@@ -268,11 +283,11 @@ class CentroCostosView(ctk.CTkFrame):
         row += 1
 
         self._peso_grande(pesos_frame, 0, "ENTRADA",
-            f"{float(p.peso_bruto or 0):,.0f} KG", UI["color_muted"])
+            f"{float(p['peso_bruto'] or 0):,.0f} KG", UI["color_muted"])
         self._peso_grande(pesos_frame, 1, "SALIDA",
-            f"{float(p.peso_tara or 0):,.0f} KG", "#f59e0b")
+            f"{float(p['peso_tara'] or 0):,.0f} KG", "#f59e0b")
         self._peso_grande(pesos_frame, 2, "NETO",
-            f"{float(p.peso_neto or 0):,.0f} KG", UI["color_success"])
+            f"{float(p['peso_neto'] or 0):,.0f} KG", UI["color_success"])
 
         # Separador
         ctk.CTkFrame(self._detalle_frame, height=1,
@@ -344,18 +359,18 @@ class CentroCostosView(ctk.CTkFrame):
 
         if not messagebox.askyesno(
             "Confirmar aprobación",
-            f"¿Aprobar la pesada {self._pesada_seleccionada.numero_ticket}?\n\n"
-            f"Neto: {float(self._pesada_seleccionada.peso_neto or 0):,.0f} KG\n\n"
+            f"¿Aprobar la pesada {self._pesada_seleccionada['numero_ticket']}?\n\n"
+            f"Neto: {float(self._pesada_seleccionada['peso_neto'] or 0):,.0f} KG\n\n"
             "Al aprobar, la Romana podrá completar los datos finales."
         ):
             return
 
-        resultado = aprobar_pesada(self._pesada_seleccionada.id)
+        resultado = api_client.aprobar_pesada(self._pesada_seleccionada["id"])
 
         if resultado["exito"]:
             messagebox.showinfo(
                 "Aprobada ✓",
-                f"Pesada {self._pesada_seleccionada.numero_ticket} aprobada.\n"
+                f"Pesada {self._pesada_seleccionada['numero_ticket']} aprobada.\n"
                 "La Romana recibirá la notificación para completar los datos."
             )
             self._cargar_cola()
@@ -368,7 +383,7 @@ class CentroCostosView(ctk.CTkFrame):
             return
 
         dialog = ctk.CTkInputDialog(
-            text=f"Motivo de rechazo para ticket {self._pesada_seleccionada.numero_ticket}:",
+            text=f"Motivo de rechazo para ticket {self._pesada_seleccionada['numero_ticket']}:",
             title="Rechazar pesada"
         )
         motivo = dialog.get_input()
@@ -376,7 +391,7 @@ class CentroCostosView(ctk.CTkFrame):
         if not motivo:
             return
 
-        resultado = rechazar_pesada(self._pesada_seleccionada.id, motivo)
+        resultado = api_client.rechazar_pesada(self._pesada_seleccionada["id"], motivo)
 
         if resultado["exito"]:
             messagebox.showinfo(

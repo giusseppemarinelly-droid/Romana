@@ -279,5 +279,7 @@ class App(ctk.CTk):
     def _on_logout(self):
         """Cierra la sesión y vuelve al login."""
         from services.auth_service import logout
+        from client.api_client import api_client
         logout()
+        api_client.logout()
         self._mostrar_login()

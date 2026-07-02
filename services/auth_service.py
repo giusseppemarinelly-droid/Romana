@@ -181,6 +181,22 @@ def logout():
     _usuario_actual = None
 
 
+def _establecer_usuario_actual(usuario_id: int):
+    """
+    Sincroniza `_usuario_actual` a partir de un usuario ya autenticado
+    por otro medio — hoy, `client/api_client.py` tras un login exitoso
+    contra el backend HTTP. Shim de compatibilidad para la GUI aún no
+    migrada (sidebar, header, tiene_permiso()); se elimina en la fase
+    de limpieza final de la migración a cliente-servidor.
+    """
+    global _usuario_actual
+    db = SessionLocal()
+    try:
+        _usuario_actual = db.query(Usuario).filter_by(id=usuario_id).first()
+    finally:
+        db.close()
+
+
 # ============================================================
 # GESTIÓN DE USUARIOS (solo para administradores)
 # ============================================================

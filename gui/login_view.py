@@ -3,7 +3,7 @@
 # ============================================================
 
 import customtkinter as ctk
-from services.auth_service import login
+from client.api_client import api_client
 from config import EMPRESA, UI
 
 
@@ -255,7 +255,7 @@ class LoginView(ctk.CTkFrame):
             self._lbl_error.configure(text="  Complete usuario y contraseña")
             return
 
-        resultado = login(usuario, password)
+        resultado = api_client.login(usuario, password)
 
         if resultado["exito"]:
             self.callback_login()
