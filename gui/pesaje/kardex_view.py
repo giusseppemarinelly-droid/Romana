@@ -1,0 +1,245 @@
+# ============================================================
+# gui/pesaje/kardex_view.py — Kardex de Pesadas
+# ============================================================
+
+import customtkinter as ctk
+from tkinter import messagebox, ttk
+from datetime import datetime, timedelta
+from services.pesaje_service import get_kardex, listar_productos_activos, listar_proveedores_activos
+from services.reporte_service import generar_kardex_pdf, generar_kardex_excel
+import os
+from config import UI
+
+
+class KardexView(ctk.CTkFrame):
+    """Pantalla de consulta del historial de pesadas (Kardex)."""
+
+    def __init__(self, parent):
+        super().__init__(parent, fg_color="transparent")
+        self._pesadas = []
+        self._construir()
+        self._buscar()
+
+    def _construir(self):
+        self.grid_columnconfigure(0, weight=1)
+        self.grid_rowconfigure(1, weight=1)
+
+        # ---- Barra de filtros ----
+        filtros = ctk.CTkFrame(
+            self,
+            fg_color=UI["color_card"],
+            border_color=UI["color_border"],
+            border_width=1,
+            corner_radius=10
+        )
+        filtros.grid(row=0, column=0, sticky="ew", padx=20, pady=(15, 5))
+
+        ctk.CTkLabel(
+            filtros, text="📋 KARDEX DE PESADAS",
+            font=ctk.CTkFont(size=15, weight="bold"),
+            text_color=UI["color_accent"]
+        ).grid(row=0, column=0, padx=15, pady=(12, 5), sticky="w", columnspan=8)
+
+        # Fechas
+        ctk.CTkLabel(filtros, text="Desde:", font=ctk.CTkFont(size=11),
+                     text_color=UI["color_text"]).grid(row=1, column=0, padx=(15, 2), pady=10)
+
+        hoy = datetime.now()
+        inicio = hoy - timedelta(days=30)
+
+        self._entry_desde = ctk.CTkEntry(filtros, width=110, height=32,
+                                          placeholder_text="dd/mm/aaaa")
+        self._entry_desde.grid(row=1, column=1, padx=(0, 10))
+        self._entry_desde.insert(0, inicio.strftime("%d/%m/%Y"))
+
+        ctk.CTkLabel(filtros, text="Hasta:", font=ctk.CTkFont(size=11),
+                     text_color=UI["color_text"]).grid(row=1, column=2, padx=(0, 2))
+
+        self._entry_hasta = ctk.CTkEntry(filtros, width=110, height=32,
+                                          placeholder_text="dd/mm/aaaa")
+        self._entry_hasta.grid(row=1, column=3, padx=(0, 10))
+        self._entry_hasta.insert(0, hoy.strftime("%d/%m/%Y"))
+
+        # Estado
+        ctk.CTkLabel(filtros, text="Estado:", font=ctk.CTkFont(size=11),
+                     text_color=UI["color_text"]).grid(row=1, column=4, padx=(0, 2))
+
+        self._combo_estado = ctk.CTkComboBox(
+            filtros, values=["Todos", "Completada", "Pendiente", "Anulada"],
+            width=130, height=32)
+        self._combo_estado.grid(row=1, column=5, padx=(0, 10))
+        self._combo_estado.set("Todos")
+
+        # Botones
+        ctk.CTkButton(
+            filtros, text="🔍 Buscar", command=self._buscar,
+            height=32, width=100, fg_color=UI["color_accent"], hover_color=UI["color_accent_hover"]
+        ).grid(row=1, column=6, padx=(0, 5))
+
+        ctk.CTkButton(
+            filtros, text="PDF", command=self._exportar_pdf,
+            height=32, width=70, fg_color=UI["color_danger"], hover_color=UI["color_danger_hover"]
+        ).grid(row=1, column=7, padx=(0, 5))
+
+        ctk.CTkButton(
+            filtros, text="Excel", command=self._exportar_excel,
+            height=32, width=80, fg_color=UI["color_success"], hover_color=UI["color_success_hover"]
+        ).grid(row=1, column=8, padx=(0, 15), pady=10)
+
+        # ---- Tabla de resultados ----
+        tabla_frame = ctk.CTkFrame(
+            self,
+            fg_color=UI["color_card"],
+            border_color=UI["color_border"],
+            border_width=1,
+            corner_radius=10
+        )
+        tabla_frame.grid(row=1, column=0, sticky="nsew", padx=20, pady=(5, 15))
+        tabla_frame.grid_rowconfigure(1, weight=1)
+        tabla_frame.grid_columnconfigure(0, weight=1)
+
+        # Etiqueta de conteo
+        self._lbl_count = ctk.CTkLabel(
+            tabla_frame, text="0 registros",
+            font=ctk.CTkFont(size=11), text_color=UI["color_muted"]
+        )
+        self._lbl_count.grid(row=0, column=0, padx=15, pady=(10, 5), sticky="w")
+
+        # Tabla (usando ttk.Treeview que funciona dentro de tkinter)
+        style = ttk.Style()
+        style.theme_use("default")
+        style.configure("Kardex.Treeview",
+            background=UI["color_card"],
+            foreground=UI["color_text"],
+            fieldbackground=UI["color_card"],
+            rowheight=28,
+            font=("Helvetica", 11)
+        )
+        style.configure("Kardex.Treeview.Heading",
+            background=UI["color_bg"],
+            foreground=UI["color_text"],
+            font=("Helvetica", 10, "bold")
+        )
+        style.map("Kardex.Treeview",
+            background=[("selected", "#E0F2FE")],
+            foreground=[("selected", "#1E3A8A")])
+
+        columnas = ("ticket", "fecha", "placa", "conductor",
+                    "producto", "bruto", "tara", "neto", "estado")
+        self._tree = ttk.Treeview(
+            tabla_frame,
+            columns=columnas,
+            show="headings",
+            style="Kardex.Treeview"
+        )
+
+        # Configurar columnas
+        configs = [
+            ("ticket",    "TICKET",      110),
+            ("fecha",     "FECHA",       140),
+            ("placa",     "PLACA",        80),
+            ("conductor", "CONDUCTOR",   140),
+            ("producto",  "PRODUCTO",    140),
+            ("bruto",     "BRUTO KG",    100),
+            ("tara",      "TARA KG",     100),
+            ("neto",      "NETO KG",     100),
+            ("estado",    "ESTADO",       90),
+        ]
+        for col_id, titulo, ancho in configs:
+            self._tree.heading(col_id, text=titulo)
+            self._tree.column(col_id, width=ancho, minwidth=60)
+
+        # Scrollbar
+        scroll_y = ttk.Scrollbar(tabla_frame, orient="vertical",
+                                   command=self._tree.yview)
+        scroll_x = ttk.Scrollbar(tabla_frame, orient="horizontal",
+                                   command=self._tree.xview)
+        self._tree.configure(yscrollcommand=scroll_y.set,
+                              xscrollcommand=scroll_x.set)
+
+        self._tree.grid(row=1, column=0, sticky="nsew", padx=(10, 0), pady=(0, 0))
+        scroll_y.grid(row=1, column=1, sticky="ns")
+        scroll_x.grid(row=2, column=0, sticky="ew", padx=(10, 0))
+
+        # Etiqueta de totales
+        self._lbl_total = ctk.CTkLabel(
+            tabla_frame, text="Total Neto: 0.00 KG",
+            font=ctk.CTkFont(size=12, weight="bold"),
+            text_color=UI["color_success"]
+        )
+        self._lbl_total.grid(row=3, column=0, padx=15, pady=10, sticky="e")
+
+    def _buscar(self):
+        """Ejecuta la búsqueda con los filtros actuales."""
+        # Parsear fechas
+        try:
+            desde_str = self._entry_desde.get().strip()
+            hasta_str = self._entry_hasta.get().strip()
+            fecha_inicio = datetime.strptime(desde_str, "%d/%m/%Y") if desde_str else None
+            fecha_fin = datetime.strptime(hasta_str, "%d/%m/%Y").replace(
+                hour=23, minute=59, second=59) if hasta_str else None
+        except ValueError:
+            messagebox.showerror("Error", "Formato de fecha incorrecto. Use dd/mm/aaaa")
+            return
+
+        estado_val = self._combo_estado.get()
+        estado = None if estado_val == "Todos" else estado_val.lower()
+
+        self._pesadas = get_kardex(
+            fecha_inicio=fecha_inicio,
+            fecha_fin=fecha_fin,
+            estado=estado
+        )
+
+        # Limpiar tabla
+        for item in self._tree.get_children():
+            self._tree.delete(item)
+
+        # Poblar tabla
+        total_neto = 0.0
+        for i, p in enumerate(self._pesadas):
+            neto = float(p.peso_neto or 0)
+            total_neto += neto
+
+            tag = "par" if i % 2 == 0 else "impar"
+            self._tree.insert("", "end", values=(
+                p.numero_ticket,
+                p.fecha_entrada.strftime("%d/%m/%Y %H:%M") if p.fecha_entrada else "—",
+                p.vehiculo.placa if p.vehiculo else "—",
+                (p.conductor.nombre[:15] if p.conductor else "—"),
+                (p.producto.nombre[:15] if p.producto else "—"),
+                f"{float(p.peso_bruto or 0):,.0f}",
+                f"{float(p.peso_tara or 0):,.0f}",
+                f"{neto:,.0f}",
+                p.estado.upper()
+            ), tags=(tag,))
+
+        self._tree.tag_configure("par",  background=UI["color_card"])
+        self._tree.tag_configure("impar", background=UI["color_bg"])
+
+        self._lbl_count.configure(text=f"{len(self._pesadas)} registros")
+        self._lbl_total.configure(text=f"Total Neto: {total_neto:,.2f} KG")
+
+    def _exportar_pdf(self):
+        if not self._pesadas:
+            messagebox.showwarning("Sin datos", "No hay datos para exportar")
+            return
+        try:
+            ruta = generar_kardex_pdf(self._pesadas)
+            if messagebox.askyesno("PDF Generado",
+                    f"PDF generado exitosamente.\n\n¿Abrir el archivo?"):
+                os.startfile(ruta)
+        except Exception as e:
+            messagebox.showerror("Error", f"Error al generar PDF: {e}")
+
+    def _exportar_excel(self):
+        if not self._pesadas:
+            messagebox.showwarning("Sin datos", "No hay datos para exportar")
+            return
+        try:
+            ruta = generar_kardex_excel(self._pesadas)
+            if messagebox.askyesno("Excel Generado",
+                    f"Excel generado exitosamente.\n\n¿Abrir el archivo?"):
+                os.startfile(ruta)
+        except Exception as e:
+            messagebox.showerror("Error", f"Error al generar Excel: {e}")

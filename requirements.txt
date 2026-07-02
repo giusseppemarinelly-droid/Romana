@@ -1,0 +1,26 @@
+# ============================================================
+# DEPENDENCIAS DEL SISTEMA DE ROMANA PARA CAMIONES
+# ============================================================
+# Para instalar todas: pip install -r requirements.txt
+
+# --- Base de datos ---
+sqlalchemy==2.0.36          # ORM para base de datos
+pg8000==1.31.2              # Driver puro Python para PostgreSQL
+
+
+# --- Interfaz gráfica ---
+customtkinter==5.2.2        # Tkinter moderno con temas oscuros/claros
+Pillow>=11.0.0              # Manejo de imágenes (logo en tickets) — requiere Python 3.14+
+
+# --- Reportes ---
+openpyxl==3.1.5             # Exportación a Excel (.xlsx)
+reportlab==4.2.5            # Generación de PDFs
+
+# --- Hardware / Display de pesaje ---
+pyserial==3.5               # Comunicación serial con displays Toledo
+
+# --- Seguridad de contraseñas ---
+bcrypt==4.2.0               # Hash seguro de contraseñas de usuarios
+
+# --- Utilidades ---
+python-dateutil==2.9.0      # Manejo avanzado de fechas
