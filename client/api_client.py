@@ -130,6 +130,34 @@ class ApiClient:
             resultado["pesada"] = resultado.pop("data")
         return resultado
 
+    # ------------------------------------------------------------
+    # Dominio: maestros (mapea 1:1 backend/routers/maestros.py)
+    # ------------------------------------------------------------
+    # Un único conjunto de métodos genéricos para los 5 catálogos
+    # (vehiculos, conductores, proveedores, productos, destinos) — el
+    # backend ya los expone con la misma forma de endpoint
+    # (crear_router_maestro), así que no hace falta repetir esto 5
+    # veces en el cliente tampoco.
+    def listar_maestro(self, recurso: str, search: Optional[str] = None, activo: Optional[bool] = True) -> list:
+        params = {}
+        if search:
+            params["search"] = search
+        if activo is not None:
+            params["activo"] = activo
+        return self.get(f"/api/v1/{recurso}", params=params)
+
+    def obtener_maestro(self, recurso: str, item_id: int) -> dict:
+        return self.get(f"/api/v1/{recurso}/{item_id}")
+
+    def crear_maestro(self, recurso: str, datos: dict) -> dict:
+        return self._mutar("POST", f"/api/v1/{recurso}", datos)
+
+    def actualizar_maestro(self, recurso: str, item_id: int, datos: dict) -> dict:
+        return self._mutar("PUT", f"/api/v1/{recurso}/{item_id}", datos)
+
+    def desactivar_maestro(self, recurso: str, item_id: int, activo: bool = False) -> dict:
+        return self._mutar("PATCH", f"/api/v1/{recurso}/{item_id}/activo", {"activo": activo})
+
 
 class ApiError(Exception):
     """Error de un GET al backend (fallo de red o respuesta 4xx/5xx)."""

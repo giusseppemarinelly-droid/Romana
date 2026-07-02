@@ -6,10 +6,11 @@
 
 import customtkinter as ctk
 from tkinter import messagebox, ttk
-from database.engine import SessionLocal
-from database.models import Vehiculo, Proveedor
+from client.api_client import api_client, ApiError
 from services.auth_service import tiene_permiso
 from config import UI
+
+_DEBOUNCE_MS = 300  # espera tras la última tecla antes de buscar en el servidor
 
 
 class VehiculosView(ctk.CTkFrame):
@@ -18,6 +19,7 @@ class VehiculosView(ctk.CTkFrame):
     def __init__(self, parent):
         super().__init__(parent, fg_color="transparent")
         self._seleccionado_id = None
+        self._debounce_id = None
         self._construir()
         self._cargar_datos()
 
@@ -61,7 +63,7 @@ class VehiculosView(ctk.CTkFrame):
             height=35, font=ctk.CTkFont(size=12)
         )
         self._entry_buscar.grid(row=1, column=0, sticky="ew", padx=15, pady=(0, 5))
-        self._entry_buscar.bind("<KeyRelease>", lambda e: self._filtrar())
+        self._entry_buscar.bind("<KeyRelease>", lambda e: self._on_tecla_buscar())
 
         # Tabla
         style = ttk.Style()
@@ -131,13 +133,13 @@ class VehiculosView(ctk.CTkFrame):
         # Proveedor
         ctk.CTkLabel(right, text="Proveedor", font=ctk.CTkFont(size=11),
                      text_color=UI["color_muted"], anchor="w").pack(fill="x", padx=18, pady=(0, 2))
-        db = SessionLocal()
         try:
-            provs = db.query(Proveedor).filter_by(activo=True).all()
-            prov_nombres = ["-- Sin proveedor --"] + [f"{p.codigo} — {p.nombre}" for p in provs]
-            self._proveedores_lista = provs
-        finally:
-            db.close()
+            provs = api_client.listar_maestro("proveedores")
+        except ApiError as e:
+            messagebox.showerror("Error de conexión", str(e))
+            provs = []
+        prov_nombres = ["-- Sin proveedor --"] + [f"{p['codigo']} — {p['nombre']}" for p in provs]
+        self._proveedores_lista = provs
 
         self._f_proveedor = ctk.CTkComboBox(
             right, values=prov_nombres, height=35, font=ctk.CTkFont(size=12))
@@ -191,33 +193,42 @@ class VehiculosView(ctk.CTkFrame):
         return combo
 
     def _cargar_datos(self):
-        """Carga todos los vehículos en la tabla."""
-        db = SessionLocal()
+        """Carga los vehículos en la tabla (búsqueda vacía = todos los activos)."""
         try:
-            self._vehiculos_all = db.query(Vehiculo).order_by(Vehiculo.placa).all()
-        finally:
-            db.close()
-        self._poblar_tabla(self._vehiculos_all)
+            vehiculos = api_client.listar_maestro("vehiculos")
+        except ApiError as e:
+            messagebox.showerror("Error de conexión", str(e))
+            vehiculos = []
+        self._poblar_tabla(vehiculos)
 
     def _poblar_tabla(self, vehiculos):
         for item in self._tree.get_children():
             self._tree.delete(item)
         for v in vehiculos:
-            self._tree.insert("", "end", iid=str(v.id), values=(
-                v.placa,
-                v.descripcion or "—",
-                f"{float(v.tara_registrada or 0):,.0f}",
-                v.tipo or "—",
-                "Activo" if v.activo else "Inactivo"
+            self._tree.insert("", "end", iid=str(v["id"]), values=(
+                v["placa"],
+                v["descripcion"] or "—",
+                f"{float(v['tara_registrada'] or 0):,.0f}",
+                v["tipo"] or "—",
+                "Activo" if v["activo"] else "Inactivo"
             ))
 
+    def _on_tecla_buscar(self):
+        """Espera a que el operador deje de escribir antes de golpear al servidor
+        (evita una búsqueda por cada tecla — ver _DEBOUNCE_MS)."""
+        if self._debounce_id:
+            self.after_cancel(self._debounce_id)
+        self._debounce_id = self.after(_DEBOUNCE_MS, self._filtrar)
+
     def _filtrar(self):
-        """Filtra la tabla según el texto de búsqueda."""
-        termino = self._entry_buscar.get().lower()
-        filtrados = [v for v in self._vehiculos_all
-                     if termino in v.placa.lower()
-                     or termino in (v.descripcion or "").lower()]
-        self._poblar_tabla(filtrados)
+        """Búsqueda indexada en el servidor (ILIKE sobre placa/descripción)."""
+        termino = self._entry_buscar.get().strip()
+        try:
+            vehiculos = api_client.listar_maestro("vehiculos", search=termino or None)
+        except ApiError as e:
+            messagebox.showerror("Error de conexión", str(e))
+            vehiculos = []
+        self._poblar_tabla(vehiculos)
 
     def _on_select(self, event):
         """Al seleccionar un vehículo en la tabla, carga sus datos en el formulario."""
@@ -225,34 +236,33 @@ class VehiculosView(ctk.CTkFrame):
         if not sel:
             return
         vid = int(sel[0])
-        db = SessionLocal()
         try:
-            v = db.query(Vehiculo).filter_by(id=vid).first()
-            if not v:
-                return
-            self._seleccionado_id = vid
-            # Llenar formulario
-            self._f_placa.delete(0, "end")
-            self._f_placa.insert(0, v.placa)
-            self._f_desc.delete(0, "end")
-            self._f_desc.insert(0, v.descripcion or "")
-            self._f_tara.delete(0, "end")
-            self._f_tara.insert(0, str(float(v.tara_registrada or 0)))
-            self._f_tipo.set(v.tipo or "camion")
+            v = api_client.obtener_maestro("vehiculos", vid)
+        except ApiError as e:
+            messagebox.showerror("Error de conexión", str(e))
+            return
 
-            # Proveedor
-            if v.proveedor_id:
-                for p in self._proveedores_lista:
-                    if p.id == v.proveedor_id:
-                        self._f_proveedor.set(f"{p.codigo} — {p.nombre}")
-                        break
-            else:
-                self._f_proveedor.set("-- Sin proveedor --")
+        self._seleccionado_id = vid
+        # Llenar formulario
+        self._f_placa.delete(0, "end")
+        self._f_placa.insert(0, v["placa"])
+        self._f_desc.delete(0, "end")
+        self._f_desc.insert(0, v["descripcion"] or "")
+        self._f_tara.delete(0, "end")
+        self._f_tara.insert(0, str(float(v["tara_registrada"] or 0)))
+        self._f_tipo.set(v["tipo"] or "camion")
 
-            if hasattr(self, "_btn_desactivar"):
-                self._btn_desactivar.configure(state="normal")
-        finally:
-            db.close()
+        # Proveedor
+        if v["proveedor_id"]:
+            for p in self._proveedores_lista:
+                if p["id"] == v["proveedor_id"]:
+                    self._f_proveedor.set(f"{p['codigo']} — {p['nombre']}")
+                    break
+        else:
+            self._f_proveedor.set("-- Sin proveedor --")
+
+        if hasattr(self, "_btn_desactivar"):
+            self._btn_desactivar.configure(state="normal")
 
     def _guardar(self):
         """Guarda (crea o actualiza) el vehículo."""
@@ -274,41 +284,25 @@ class VehiculosView(ctk.CTkFrame):
         prov_val = self._f_proveedor.get()
         prov_id = None
         for p in self._proveedores_lista:
-            if f"{p.codigo} — {p.nombre}" == prov_val:
-                prov_id = p.id
+            if f"{p['codigo']} — {p['nombre']}" == prov_val:
+                prov_id = p["id"]
                 break
 
-        db = SessionLocal()
-        try:
-            if self._seleccionado_id:
-                # Actualizar
-                v = db.query(Vehiculo).filter_by(id=self._seleccionado_id).first()
-                if v:
-                    v.placa = placa
-                    v.descripcion = desc
-                    v.tara_registrada = tara
-                    v.tipo = tipo
-                    v.proveedor_id = prov_id
-                    db.commit()
-                    messagebox.showinfo("✅ Éxito", f"Vehículo {placa} actualizado")
-            else:
-                # Crear nuevo
-                existe = db.query(Vehiculo).filter_by(placa=placa).first()
-                if existe:
-                    messagebox.showerror("Error", f"Ya existe un vehículo con placa {placa}")
-                    return
-                nuevo = Vehiculo(
-                    placa=placa, descripcion=desc,
-                    tara_registrada=tara, tipo=tipo, proveedor_id=prov_id
-                )
-                db.add(nuevo)
-                db.commit()
-                messagebox.showinfo("✅ Éxito", f"Vehículo {placa} creado")
-        except Exception as e:
-            db.rollback()
-            messagebox.showerror("Error", str(e))
-        finally:
-            db.close()
+        datos = {"placa": placa, "descripcion": desc, "tara_registrada": tara,
+                 "tipo": tipo, "proveedor_id": prov_id}
+
+        if self._seleccionado_id:
+            resultado = api_client.actualizar_maestro("vehiculos", self._seleccionado_id, datos)
+            mensaje_ok = f"Vehículo {placa} actualizado"
+        else:
+            resultado = api_client.crear_maestro("vehiculos", datos)
+            mensaje_ok = f"Vehículo {placa} creado"
+
+        if resultado["exito"]:
+            messagebox.showinfo("✅ Éxito", mensaje_ok)
+        else:
+            messagebox.showerror("Error", resultado["mensaje"])
+            return
 
         self._limpiar()
         self._cargar_datos()
@@ -319,15 +313,11 @@ class VehiculosView(ctk.CTkFrame):
         if not messagebox.askyesno("Confirmar",
                 "¿Desactivar este vehículo?\nNo podrá usarse en nuevas pesadas."):
             return
-        db = SessionLocal()
-        try:
-            v = db.query(Vehiculo).filter_by(id=self._seleccionado_id).first()
-            if v:
-                v.activo = False
-                db.commit()
-                messagebox.showinfo("✅", f"Vehículo {v.placa} desactivado")
-        finally:
-            db.close()
+        resultado = api_client.desactivar_maestro("vehiculos", self._seleccionado_id, activo=False)
+        if resultado["exito"]:
+            messagebox.showinfo("✅", "Vehículo desactivado")
+        else:
+            messagebox.showerror("Error", resultado["mensaje"])
         self._limpiar()
         self._cargar_datos()
 

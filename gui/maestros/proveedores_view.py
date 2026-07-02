@@ -1,15 +1,17 @@
 # gui/maestros/proveedores_view.py — CRUD Proveedores
 import customtkinter as ctk
 from tkinter import messagebox, ttk
-from database.engine import SessionLocal
-from database.models import Proveedor
+from client.api_client import api_client, ApiError
 from config import UI
+
+_DEBOUNCE_MS = 300
 
 
 class ProveedoresView(ctk.CTkFrame):
     def __init__(self, parent):
         super().__init__(parent, fg_color="transparent")
         self._seleccionado_id = None
+        self._debounce_id = None
         self._construir()
         self._cargar_datos()
 
@@ -36,7 +38,7 @@ class ProveedoresView(ctk.CTkFrame):
 
         self._entry_buscar = ctk.CTkEntry(left, placeholder_text="🔍 Buscar...", height=35)
         self._entry_buscar.grid(row=1, column=0, sticky="ew", padx=15, pady=(0,5))
-        self._entry_buscar.bind("<KeyRelease>", lambda e: self._filtrar())
+        self._entry_buscar.bind("<KeyRelease>", lambda e: self._on_tecla_buscar())
 
         style = ttk.Style()
         style.configure("Prov.Treeview",
@@ -96,69 +98,73 @@ class ProveedoresView(ctk.CTkFrame):
         return entry
 
     def _cargar_datos(self):
-        db = SessionLocal()
         try:
-            self._data = db.query(Proveedor).order_by(Proveedor.nombre).all()
-        finally:
-            db.close()
-        self._poblar_tabla(self._data)
+            datos = api_client.listar_maestro("proveedores")
+        except ApiError as e:
+            messagebox.showerror("Error de conexión", str(e))
+            datos = []
+        self._poblar_tabla(datos)
 
     def _poblar_tabla(self, items):
         for item in self._tree.get_children(): self._tree.delete(item)
         for p in items:
-            self._tree.insert("", "end", iid=str(p.id), values=(p.codigo, p.nombre, p.rif or "—", p.telefono or "—", "Activo" if p.activo else "Inactivo"))
+            self._tree.insert("", "end", iid=str(p["id"]), values=(p["codigo"], p["nombre"], p["rif"] or "—", p["telefono"] or "—", "Activo" if p["activo"] else "Inactivo"))
+
+    def _on_tecla_buscar(self):
+        if self._debounce_id:
+            self.after_cancel(self._debounce_id)
+        self._debounce_id = self.after(_DEBOUNCE_MS, self._filtrar)
 
     def _filtrar(self):
-        t = self._entry_buscar.get().lower()
-        self._poblar_tabla([p for p in self._data if t in p.nombre.lower() or t in p.codigo.lower()])
+        termino = self._entry_buscar.get().strip()
+        try:
+            datos = api_client.listar_maestro("proveedores", search=termino or None)
+        except ApiError as e:
+            messagebox.showerror("Error de conexión", str(e))
+            datos = []
+        self._poblar_tabla(datos)
 
     def _on_select(self, event):
         sel = self._tree.selection()
         if not sel: return
         pid = int(sel[0])
-        db = SessionLocal()
         try:
-            p = db.query(Proveedor).filter_by(id=pid).first()
-            if not p: return
-            self._seleccionado_id = pid
-            pairs = [(self._f_codigo,p.codigo),(self._f_nombre,p.nombre),(self._f_rif,p.rif or ""),(self._f_telefono,p.telefono or ""),(self._f_email,p.email or ""),(self._f_direccion,p.direccion or "")]
-            for e,v in pairs: e.delete(0,"end"); e.insert(0,v)
-            self._btn_desact.configure(state="normal")
-        finally:
-            db.close()
+            p = api_client.obtener_maestro("proveedores", pid)
+        except ApiError as e:
+            messagebox.showerror("Error de conexión", str(e))
+            return
+        self._seleccionado_id = pid
+        pairs = [(self._f_codigo,p["codigo"]),(self._f_nombre,p["nombre"]),(self._f_rif,p["rif"] or ""),(self._f_telefono,p["telefono"] or ""),(self._f_email,p["email"] or ""),(self._f_direccion,p["direccion"] or "")]
+        for e,v in pairs: e.delete(0,"end"); e.insert(0,v)
+        self._btn_desact.configure(state="normal")
 
     def _guardar(self):
         codigo = self._f_codigo.get().strip().upper()
         nombre = self._f_nombre.get().strip()
         if not codigo or not nombre:
             messagebox.showerror("Error","Código y nombre son obligatorios"); return
-        db = SessionLocal()
-        try:
-            if self._seleccionado_id:
-                p = db.query(Proveedor).filter_by(id=self._seleccionado_id).first()
-                if p:
-                    p.codigo=codigo; p.nombre=nombre; p.rif=self._f_rif.get().strip(); p.telefono=self._f_telefono.get().strip(); p.email=self._f_email.get().strip(); p.direccion=self._f_direccion.get().strip()
-                    db.commit(); messagebox.showinfo("✅","Proveedor actualizado")
-            else:
-                if db.query(Proveedor).filter_by(codigo=codigo).first():
-                    messagebox.showerror("Error","Código ya existe"); return
-                db.add(Proveedor(codigo=codigo,nombre=nombre,rif=self._f_rif.get().strip(),telefono=self._f_telefono.get().strip(),email=self._f_email.get().strip(),direccion=self._f_direccion.get().strip()))
-                db.commit(); messagebox.showinfo("✅","Proveedor creado")
-        except Exception as e:
-            db.rollback(); messagebox.showerror("Error",str(e))
-        finally:
-            db.close()
+        datos = {"codigo": codigo, "nombre": nombre, "rif": self._f_rif.get().strip(),
+                 "telefono": self._f_telefono.get().strip(), "email": self._f_email.get().strip(),
+                 "direccion": self._f_direccion.get().strip()}
+        if self._seleccionado_id:
+            resultado = api_client.actualizar_maestro("proveedores", self._seleccionado_id, datos)
+            mensaje_ok = "Proveedor actualizado"
+        else:
+            resultado = api_client.crear_maestro("proveedores", datos)
+            mensaje_ok = "Proveedor creado"
+        if resultado["exito"]:
+            messagebox.showinfo("✅", mensaje_ok)
+        else:
+            messagebox.showerror("Error", resultado["mensaje"])
+            return
         self._limpiar(); self._cargar_datos()
 
     def _desactivar(self):
         if not self._seleccionado_id: return
         if not messagebox.askyesno("Confirmar","¿Desactivar este proveedor?"): return
-        db = SessionLocal()
-        try:
-            p = db.query(Proveedor).filter_by(id=self._seleccionado_id).first()
-            if p: p.activo=False; db.commit()
-        finally:
-            db.close()
+        resultado = api_client.desactivar_maestro("proveedores", self._seleccionado_id, activo=False)
+        if not resultado["exito"]:
+            messagebox.showerror("Error", resultado["mensaje"])
         self._limpiar(); self._cargar_datos()
 
     def _nuevo(self): self._limpiar()

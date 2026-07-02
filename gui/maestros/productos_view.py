@@ -1,15 +1,21 @@
 # gui/maestros/productos_view.py — CRUD Productos
 import customtkinter as ctk
 from tkinter import messagebox, ttk
-from database.engine import SessionLocal
-from database.models import Producto
+from client.api_client import api_client, ApiError
 from config import UI
+
+_DEBOUNCE_MS = 300
 
 
 class ProductosView(ctk.CTkFrame):
     def __init__(self, parent):
         super().__init__(parent, fg_color="transparent")
         self._seleccionado_id = None
+        self._debounce_id = None
+        # tipo_pesaje no tiene campo en este formulario, pero el PUT del
+        # backend reemplaza el registro completo — hay que reenviar el
+        # valor actual para no resetearlo a GENERAL en cada edición.
+        self._tipo_pesaje_actual = "GENERAL"
         self._construir()
         self._cargar_datos()
 
@@ -36,7 +42,7 @@ class ProductosView(ctk.CTkFrame):
 
         self._entry_buscar = ctk.CTkEntry(left, placeholder_text="🔍 Buscar...", height=35)
         self._entry_buscar.grid(row=1, column=0, sticky="ew", padx=15, pady=(0,5))
-        self._entry_buscar.bind("<KeyRelease>", lambda e: self._filtrar())
+        self._entry_buscar.bind("<KeyRelease>", lambda e: self._on_tecla_buscar())
 
         style = ttk.Style()
         style.configure("Prod.Treeview",
@@ -101,73 +107,81 @@ class ProductosView(ctk.CTkFrame):
         return entry
 
     def _cargar_datos(self):
-        db = SessionLocal()
         try:
-            self._data = db.query(Producto).order_by(Producto.nombre).all()
-        finally:
-            db.close()
-        self._poblar_tabla(self._data)
+            datos = api_client.listar_maestro("productos")
+        except ApiError as e:
+            messagebox.showerror("Error de conexión", str(e))
+            datos = []
+        self._poblar_tabla(datos)
 
     def _poblar_tabla(self, items):
         for item in self._tree.get_children(): self._tree.delete(item)
         for p in items:
-            self._tree.insert("","end",iid=str(p.id),values=(p.codigo, p.nombre, p.unidad, "Activo" if p.activo else "Inactivo"))
+            self._tree.insert("","end",iid=str(p["id"]),values=(p["codigo"], p["nombre"], p["unidad"], "Activo" if p["activo"] else "Inactivo"))
+
+    def _on_tecla_buscar(self):
+        if self._debounce_id:
+            self.after_cancel(self._debounce_id)
+        self._debounce_id = self.after(_DEBOUNCE_MS, self._filtrar)
 
     def _filtrar(self):
-        t = self._entry_buscar.get().lower()
-        self._poblar_tabla([p for p in self._data if t in p.nombre.lower() or t in p.codigo.lower()])
+        termino = self._entry_buscar.get().strip()
+        try:
+            datos = api_client.listar_maestro("productos", search=termino or None)
+        except ApiError as e:
+            messagebox.showerror("Error de conexión", str(e))
+            datos = []
+        self._poblar_tabla(datos)
 
     def _on_select(self, event):
         sel = self._tree.selection()
         if not sel: return
         pid = int(sel[0])
-        db = SessionLocal()
         try:
-            p = db.query(Producto).filter_by(id=pid).first()
-            if not p: return
-            self._seleccionado_id = pid
-            self._f_codigo.delete(0,"end"); self._f_codigo.insert(0, p.codigo)
-            self._f_nombre.delete(0,"end"); self._f_nombre.insert(0, p.nombre)
-            self._f_unidad.set(p.unidad or "KG")
-            self._f_desc.delete("1.0","end"); self._f_desc.insert("1.0", p.descripcion or "")
-            self._btn_desact.configure(state="normal")
-        finally:
-            db.close()
+            p = api_client.obtener_maestro("productos", pid)
+        except ApiError as e:
+            messagebox.showerror("Error de conexión", str(e))
+            return
+        self._seleccionado_id = pid
+        self._tipo_pesaje_actual = p["tipo_pesaje"]
+        self._f_codigo.delete(0,"end"); self._f_codigo.insert(0, p["codigo"])
+        self._f_nombre.delete(0,"end"); self._f_nombre.insert(0, p["nombre"])
+        self._f_unidad.set(p["unidad"] or "KG")
+        self._f_desc.delete("1.0","end"); self._f_desc.insert("1.0", p["descripcion"] or "")
+        self._btn_desact.configure(state="normal")
 
     def _guardar(self):
         codigo = self._f_codigo.get().strip().upper()
         nombre = self._f_nombre.get().strip()
         if not codigo or not nombre:
             messagebox.showerror("Error","Código y nombre son obligatorios"); return
-        db = SessionLocal()
-        try:
-            if self._seleccionado_id:
-                p = db.query(Producto).filter_by(id=self._seleccionado_id).first()
-                if p: p.codigo=codigo; p.nombre=nombre; p.unidad=self._f_unidad.get(); p.descripcion=self._f_desc.get("1.0","end").strip(); db.commit(); messagebox.showinfo("✅","Producto actualizado")
-            else:
-                if db.query(Producto).filter_by(codigo=codigo).first():
-                    messagebox.showerror("Error","Código ya existe"); return
-                db.add(Producto(codigo=codigo, nombre=nombre, unidad=self._f_unidad.get(), descripcion=self._f_desc.get("1.0","end").strip()))
-                db.commit(); messagebox.showinfo("✅","Producto creado")
-        except Exception as e:
-            db.rollback(); messagebox.showerror("Error",str(e))
-        finally:
-            db.close()
+        datos = {"codigo": codigo, "nombre": nombre, "unidad": self._f_unidad.get(),
+                 "descripcion": self._f_desc.get("1.0","end").strip(),
+                 "tipo_pesaje": self._tipo_pesaje_actual}
+        if self._seleccionado_id:
+            resultado = api_client.actualizar_maestro("productos", self._seleccionado_id, datos)
+            mensaje_ok = "Producto actualizado"
+        else:
+            resultado = api_client.crear_maestro("productos", datos)
+            mensaje_ok = "Producto creado"
+        if resultado["exito"]:
+            messagebox.showinfo("✅", mensaje_ok)
+        else:
+            messagebox.showerror("Error", resultado["mensaje"])
+            return
         self._limpiar(); self._cargar_datos()
 
     def _desactivar(self):
         if not self._seleccionado_id: return
-        db = SessionLocal()
-        try:
-            p = db.query(Producto).filter_by(id=self._seleccionado_id).first()
-            if p: p.activo=False; db.commit()
-        finally:
-            db.close()
+        resultado = api_client.desactivar_maestro("productos", self._seleccionado_id, activo=False)
+        if not resultado["exito"]:
+            messagebox.showerror("Error", resultado["mensaje"])
         self._limpiar(); self._cargar_datos()
 
     def _nuevo(self): self._limpiar()
     def _limpiar(self):
         self._seleccionado_id = None
+        self._tipo_pesaje_actual = "GENERAL"
         self._f_codigo.delete(0,"end"); self._f_nombre.delete(0,"end")
         self._f_unidad.set("KG"); self._f_desc.delete("1.0","end")
         self._btn_desact.configure(state="disabled")

@@ -1,15 +1,17 @@
 # gui/maestros/conductores_view.py — CRUD Conductores
 import customtkinter as ctk
 from tkinter import messagebox, ttk
-from database.engine import SessionLocal
-from database.models import Conductor
+from client.api_client import api_client, ApiError
 from config import UI
+
+_DEBOUNCE_MS = 300
 
 
 class ConductoresView(ctk.CTkFrame):
     def __init__(self, parent):
         super().__init__(parent, fg_color="transparent")
         self._seleccionado_id = None
+        self._debounce_id = None
         self._construir()
         self._cargar_datos()
 
@@ -36,7 +38,7 @@ class ConductoresView(ctk.CTkFrame):
 
         self._entry_buscar = ctk.CTkEntry(left, placeholder_text="🔍 Buscar por nombre o documento...", height=35)
         self._entry_buscar.grid(row=1, column=0, sticky="ew", padx=15, pady=(0,5))
-        self._entry_buscar.bind("<KeyRelease>", lambda e: self._filtrar())
+        self._entry_buscar.bind("<KeyRelease>", lambda e: self._on_tecla_buscar())
 
         style = ttk.Style()
         style.configure("Cond.Treeview",
@@ -99,37 +101,46 @@ class ConductoresView(ctk.CTkFrame):
         return entry
 
     def _cargar_datos(self):
-        db = SessionLocal()
         try:
-            self._conductores_all = db.query(Conductor).order_by(Conductor.nombre).all()
-        finally:
-            db.close()
-        self._poblar_tabla(self._conductores_all)
+            conductores = api_client.listar_maestro("conductores")
+        except ApiError as e:
+            messagebox.showerror("Error de conexión", str(e))
+            conductores = []
+        self._poblar_tabla(conductores)
 
     def _poblar_tabla(self, conductores):
         for item in self._tree.get_children(): self._tree.delete(item)
         for c in conductores:
-            self._tree.insert("", "end", iid=str(c.id), values=(c.nombre, c.documento, c.tipo_documento, c.telefono or "—", "Activo" if c.activo else "Inactivo"))
+            self._tree.insert("", "end", iid=str(c["id"]), values=(c["nombre"], c["documento"], c["tipo_documento"], c["telefono"] or "—", "Activo" if c["activo"] else "Inactivo"))
+
+    def _on_tecla_buscar(self):
+        if self._debounce_id:
+            self.after_cancel(self._debounce_id)
+        self._debounce_id = self.after(_DEBOUNCE_MS, self._filtrar)
 
     def _filtrar(self):
-        t = self._entry_buscar.get().lower()
-        self._poblar_tabla([c for c in self._conductores_all if t in c.nombre.lower() or t in c.documento.lower()])
+        termino = self._entry_buscar.get().strip()
+        try:
+            conductores = api_client.listar_maestro("conductores", search=termino or None)
+        except ApiError as e:
+            messagebox.showerror("Error de conexión", str(e))
+            conductores = []
+        self._poblar_tabla(conductores)
 
     def _on_select(self, event):
         sel = self._tree.selection()
         if not sel: return
         cid = int(sel[0])
-        db = SessionLocal()
         try:
-            c = db.query(Conductor).filter_by(id=cid).first()
-            if not c: return
-            self._seleccionado_id = cid
-            for e, v in [(self._f_nombre, c.nombre),(self._f_doc, c.documento),(self._f_tel, c.telefono or "")]:
-                e.delete(0,"end"); e.insert(0,v)
-            self._f_tipo.set(c.tipo_documento)
-            self._btn_desact.configure(state="normal")
-        finally:
-            db.close()
+            c = api_client.obtener_maestro("conductores", cid)
+        except ApiError as e:
+            messagebox.showerror("Error de conexión", str(e))
+            return
+        self._seleccionado_id = cid
+        for e, v in [(self._f_nombre, c["nombre"]),(self._f_doc, c["documento"]),(self._f_tel, c["telefono"] or "")]:
+            e.delete(0,"end"); e.insert(0,v)
+        self._f_tipo.set(c["tipo_documento"])
+        self._btn_desact.configure(state="normal")
 
     def _guardar(self):
         nombre = self._f_nombre.get().strip()
@@ -137,33 +148,28 @@ class ConductoresView(ctk.CTkFrame):
         if not nombre or not doc:
             messagebox.showerror("Error", "Nombre y documento son obligatorios")
             return
-        db = SessionLocal()
-        try:
-            if self._seleccionado_id:
-                c = db.query(Conductor).filter_by(id=self._seleccionado_id).first()
-                if c:
-                    c.nombre=nombre; c.documento=doc; c.tipo_documento=self._f_tipo.get(); c.telefono=self._f_tel.get().strip()
-                    db.commit(); messagebox.showinfo("✅","Conductor actualizado")
-            else:
-                if db.query(Conductor).filter_by(documento=doc).first():
-                    messagebox.showerror("Error","Ya existe un conductor con ese documento"); return
-                db.add(Conductor(nombre=nombre, documento=doc, tipo_documento=self._f_tipo.get(), telefono=self._f_tel.get().strip()))
-                db.commit(); messagebox.showinfo("✅","Conductor creado")
-        except Exception as e:
-            db.rollback(); messagebox.showerror("Error",str(e))
-        finally:
-            db.close()
+        datos = {"nombre": nombre, "documento": doc, "tipo_documento": self._f_tipo.get(), "telefono": self._f_tel.get().strip()}
+        if self._seleccionado_id:
+            resultado = api_client.actualizar_maestro("conductores", self._seleccionado_id, datos)
+            mensaje_ok = "Conductor actualizado"
+        else:
+            resultado = api_client.crear_maestro("conductores", datos)
+            mensaje_ok = "Conductor creado"
+        if resultado["exito"]:
+            messagebox.showinfo("✅", mensaje_ok)
+        else:
+            messagebox.showerror("Error", resultado["mensaje"])
+            return
         self._limpiar(); self._cargar_datos()
 
     def _desactivar(self):
         if not self._seleccionado_id: return
         if not messagebox.askyesno("Confirmar", "¿Desactivar este conductor?"): return
-        db = SessionLocal()
-        try:
-            c = db.query(Conductor).filter_by(id=self._seleccionado_id).first()
-            if c: c.activo=False; db.commit(); messagebox.showinfo("✅",f"{c.nombre} desactivado")
-        finally:
-            db.close()
+        resultado = api_client.desactivar_maestro("conductores", self._seleccionado_id, activo=False)
+        if resultado["exito"]:
+            messagebox.showinfo("✅", "Conductor desactivado")
+        else:
+            messagebox.showerror("Error", resultado["mensaje"])
         self._limpiar(); self._cargar_datos()
 
     def _nuevo(self): self._limpiar()
