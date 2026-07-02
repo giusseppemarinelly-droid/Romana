@@ -6,7 +6,6 @@ import customtkinter as ctk
 from tkinter import messagebox, ttk
 from datetime import datetime, timedelta
 from client.api_client import api_client, ApiError
-from services.auth_service import tiene_permiso
 import os
 from config import UI, REPORTS_DIR
 
@@ -99,7 +98,7 @@ class KardexView(ctk.CTkFrame):
         # Exportar (PDF/Excel) requiere "reportes_exportar" (niveles 1-2) —
         # el backend ya lo exige; acá se oculta el botón en vez de dejar
         # que el operador se tope con un error 403 al hacer clic.
-        if tiene_permiso("reportes_exportar"):
+        if api_client.tiene_permiso("reportes_exportar"):
             ctk.CTkButton(
                 filtros, text="PDF", command=self._exportar_pdf,
                 height=32, width=70, fg_color=UI["color_danger"], hover_color=UI["color_danger_hover"]

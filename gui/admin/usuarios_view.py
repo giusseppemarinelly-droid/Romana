@@ -4,12 +4,15 @@
 
 import customtkinter as ctk
 from tkinter import messagebox, ttk
-from services.auth_service import (
-    listar_usuarios, crear_usuario,
-    cambiar_password, activar_desactivar_usuario,
-    get_usuario_actual
-)
+from datetime import datetime
+from client.api_client import api_client, ApiError
 from config import UI
+
+
+def _fecha_hora(iso_str):
+    if not iso_str:
+        return "Nunca"
+    return datetime.fromisoformat(iso_str).strftime("%d/%m/%Y %H:%M")
 
 
 class UsuariosView(ctk.CTkFrame):
@@ -181,19 +184,22 @@ class UsuariosView(ctk.CTkFrame):
         ).pack(fill="x")
 
     def _cargar_datos(self):
-        usuarios = listar_usuarios()
+        try:
+            usuarios = api_client.listar_usuarios()
+        except ApiError as e:
+            messagebox.showerror("Error de conexión", str(e))
+            usuarios = []
         for item in self._tree.get_children():
             self._tree.delete(item)
 
-        nivel_nombre = {1: "👑 Administrador", 2: "🔧 Supervisor", 3: "🔑 Operador"}
+        nivel_nombre = {1: "👑 Administrador", 2: "🔧 Supervisor", 3: "🔑 Operador", 4: "📋 Centro de Costos"}
         for u in usuarios:
-            ultimo = u.last_login.strftime("%d/%m/%Y %H:%M") if u.last_login else "Nunca"
-            self._tree.insert("", "end", iid=str(u.id), values=(
-                u.username,
-                u.nombre_completo,
-                nivel_nombre.get(u.nivel, "—"),
-                "Activo" if u.activo else "Inactivo",
-                ultimo
+            self._tree.insert("", "end", iid=str(u["id"]), values=(
+                u["username"],
+                u["nombre_completo"],
+                nivel_nombre.get(u["nivel"], "—"),
+                "Activo" if u["activo"] else "Inactivo",
+                _fecha_hora(u.get("last_login"))
             ))
 
     def _on_select(self, event):
@@ -202,22 +208,25 @@ class UsuariosView(ctk.CTkFrame):
             return
         uid = int(sel[0])
 
-        # Buscar el usuario
-        usuarios = listar_usuarios()
-        usuario = next((u for u in usuarios if u.id == uid), None)
+        try:
+            usuarios = api_client.listar_usuarios()
+        except ApiError as e:
+            messagebox.showerror("Error de conexión", str(e))
+            return
+        usuario = next((u for u in usuarios if u["id"] == uid), None)
         if not usuario:
             return
 
         self._seleccionado = usuario
         self._f_username.delete(0, "end")
-        self._f_username.insert(0, usuario.username)
+        self._f_username.insert(0, usuario["username"])
         self._f_nombre.delete(0, "end")
-        self._f_nombre.insert(0, usuario.nombre_completo)
+        self._f_nombre.insert(0, usuario["nombre_completo"])
 
         nivel_opts = {1: "1 — Administrador", 2: "2 — Supervisor", 3: "3 — Operador"}
-        self._f_nivel.set(nivel_opts.get(usuario.nivel, "3 — Operador"))
+        self._f_nivel.set(nivel_opts.get(usuario["nivel"], "3 — Operador"))
 
-        estado_txt = "🚫 Desactivar" if usuario.activo else "✅ Activar"
+        estado_txt = "🚫 Desactivar" if usuario["activo"] else "✅ Activar"
         self._btn_activar.configure(text=estado_txt, state="normal")
 
     def _guardar(self):
@@ -241,7 +250,7 @@ class UsuariosView(ctk.CTkFrame):
                 if len(pass1) < 4:
                     messagebox.showerror("Error", "La contraseña debe tener al menos 4 caracteres")
                     return
-                resultado = cambiar_password(self._seleccionado.id, pass1)
+                resultado = api_client.cambiar_password(self._seleccionado["id"], pass1)
                 if resultado["exito"]:
                     messagebox.showinfo("✅", "Contraseña actualizada")
                 else:
@@ -258,9 +267,9 @@ class UsuariosView(ctk.CTkFrame):
                 messagebox.showerror("Error", "La contraseña debe tener al menos 4 caracteres")
                 return
 
-            resultado = crear_usuario(username, pass1, nombre, nivel)
+            resultado = api_client.crear_usuario(username, pass1, nombre, nivel)
             if resultado["exito"]:
-                messagebox.showinfo("✅", resultado["mensaje"])
+                messagebox.showinfo("✅", resultado["data"]["mensaje"])
             else:
                 messagebox.showerror("Error", resultado["mensaje"])
                 return
@@ -272,18 +281,18 @@ class UsuariosView(ctk.CTkFrame):
         if not self._seleccionado:
             return
         # No puede desactivarse a sí mismo
-        actual = get_usuario_actual()
-        if actual and actual.id == self._seleccionado.id:
+        actual = api_client.usuario
+        if actual and actual["id"] == self._seleccionado["id"]:
             messagebox.showerror("Error", "No puedes desactivar tu propia cuenta")
             return
 
-        nuevo_estado = not self._seleccionado.activo
+        nuevo_estado = not self._seleccionado["activo"]
         accion = "activar" if nuevo_estado else "desactivar"
 
-        if messagebox.askyesno("Confirmar", f"¿{accion.capitalize()} al usuario {self._seleccionado.username}?"):
-            resultado = activar_desactivar_usuario(self._seleccionado.id, nuevo_estado)
+        if messagebox.askyesno("Confirmar", f"¿{accion.capitalize()} al usuario {self._seleccionado['username']}?"):
+            resultado = api_client.activar_desactivar_usuario(self._seleccionado["id"], nuevo_estado)
             if resultado["exito"]:
-                messagebox.showinfo("✅", resultado["mensaje"])
+                messagebox.showinfo("✅", resultado["data"]["mensaje"])
             else:
                 messagebox.showerror("Error", resultado["mensaje"])
             self._limpiar()

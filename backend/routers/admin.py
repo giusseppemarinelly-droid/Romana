@@ -57,12 +57,17 @@ def _listar_configuracion_sync():
 
 
 def _actualizar_configuracion_sync(clave: str, valor: str):
+    """Upsert: gui/admin/configuracion_view.py guarda claves que pueden no
+    existir todavía (ej. puerto_com, baudrate) — solo prefijo_ticket/
+    ticket_actual/corte_actual vienen sembradas por database/seed.py."""
     db = SessionLocal()
     try:
         cfg = db.query(Configuracion).filter_by(clave=clave).first()
-        if not cfg:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Clave de configuración '{clave}' no encontrada")
-        cfg.valor = valor
+        if cfg:
+            cfg.valor = valor
+        else:
+            cfg = Configuracion(clave=clave, valor=valor)
+            db.add(cfg)
         db.commit()
         db.refresh(cfg)
         return cfg

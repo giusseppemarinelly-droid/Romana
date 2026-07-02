@@ -17,7 +17,6 @@ from database.models import (
     Proveedor, Destino, Lote, Remolque, Contenedor,
     Configuracion, Usuario
 )
-from services.auth_service import get_usuario_actual
 
 
 # ============================================================
@@ -25,21 +24,12 @@ from services.auth_service import get_usuario_actual
 # ============================================================
 def _resolver_usuario_id(usuario_id: Optional[int]) -> Optional[int]:
     """
-    Resuelve qué usuario_id usar en una transición de estado.
-
-    Backend HTTP: pasa `usuario_id` explícito (viene del JWT vía
-    `Depends(get_current_user)`) — cada request es de un usuario distinto,
-    no hay estado global que consultar.
-
-    GUI vieja (no migrada aún): no pasa `usuario_id`, así que se cae al
-    global `_usuario_actual` de `auth_service` por compatibilidad. Se
-    elimina este fallback cuando termine la fase de limpieza de la
-    migración a cliente-servidor.
+    Todas las transiciones de estado se llaman exclusivamente desde
+    backend/routers/pesadas.py, que siempre pasa usuario_id explícito
+    (viene del JWT vía Depends(get_current_user)) — no hay ningún
+    estado de "usuario logueado" a nivel de proceso que resolver acá.
     """
-    if usuario_id is not None:
-        return usuario_id
-    usuario = get_usuario_actual()
-    return usuario.id if usuario else None
+    return usuario_id
 
 
 def _pesada_options():

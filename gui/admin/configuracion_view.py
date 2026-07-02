@@ -4,8 +4,7 @@
 
 import customtkinter as ctk
 from tkinter import messagebox
-from database.engine import SessionLocal
-from database.models import Configuracion
+from client.api_client import api_client, ApiError
 from config import EMPRESA, UI
 
 
@@ -112,37 +111,26 @@ class ConfiguracionView(ctk.CTkFrame):
             self._campos[clave] = entry
 
     def _cargar_datos(self):
-        """Carga los valores actuales desde la base de datos."""
-        db = SessionLocal()
+        """Carga los valores actuales desde el servidor."""
         try:
-            for clave, entry in self._campos.items():
-                cfg = db.query(Configuracion).filter_by(clave=clave).first()
-                entry.delete(0, "end")
-                if cfg:
-                    entry.insert(0, cfg.valor or "")
-        finally:
-            db.close()
+            configuraciones = {c["clave"]: c["valor"] for c in api_client.listar_configuracion()}
+        except ApiError as e:
+            messagebox.showerror("Error de conexión", str(e))
+            configuraciones = {}
+        for clave, entry in self._campos.items():
+            entry.delete(0, "end")
+            entry.insert(0, configuraciones.get(clave) or "")
 
     def _guardar(self):
-        """Guarda todos los valores en la base de datos."""
-        db = SessionLocal()
-        try:
-            for clave, entry in self._campos.items():
-                valor = entry.get().strip()
-                cfg = db.query(Configuracion).filter_by(clave=clave).first()
-                if cfg:
-                    cfg.valor = valor
-                else:
-                    db.add(Configuracion(clave=clave, valor=valor))
-            db.commit()
-            messagebox.showinfo(
-                "✅ Configuración Guardada",
-                "Los cambios han sido guardados.\n\n"
-                "Algunos cambios (como el nombre de empresa) se verán\n"
-                "en los próximos tickets y reportes generados."
-            )
-        except Exception as e:
-            db.rollback()
-            messagebox.showerror("Error", f"No se pudo guardar: {e}")
-        finally:
-            db.close()
+        """Guarda todos los valores en el servidor (upsert por clave)."""
+        for clave, entry in self._campos.items():
+            resultado = api_client.actualizar_configuracion(clave, entry.get().strip())
+            if not resultado["exito"]:
+                messagebox.showerror("Error", f"No se pudo guardar '{clave}': {resultado['mensaje']}")
+                return
+        messagebox.showinfo(
+            "✅ Configuración Guardada",
+            "Los cambios han sido guardados.\n\n"
+            "Algunos cambios (como el nombre de empresa) se verán\n"
+            "en los próximos tickets y reportes generados."
+        )

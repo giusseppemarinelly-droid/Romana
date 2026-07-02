@@ -7,7 +7,6 @@
 import customtkinter as ctk
 from tkinter import messagebox, ttk
 from client.api_client import api_client, ApiError
-from services.auth_service import tiene_permiso
 from config import UI
 
 _DEBOUNCE_MS = 300  # espera tras la última tecla antes de buscar en el servidor
@@ -158,7 +157,7 @@ class VehiculosView(ctk.CTkFrame):
         )
         self._btn_guardar.pack(fill="x", pady=(0, 5))
 
-        if tiene_permiso("maestros_eliminar"):
+        if api_client.tiene_permiso("maestros_eliminar"):
             self._btn_desactivar = ctk.CTkButton(
                 btn_frame, text="🚫 Desactivar",
                 command=self._desactivar, height=36,

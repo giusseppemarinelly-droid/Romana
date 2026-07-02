@@ -3,7 +3,7 @@
 # ============================================================
 
 import customtkinter as ctk
-from services.auth_service import get_usuario_actual, tiene_permiso
+from client.api_client import api_client
 from config import UI
 
 
@@ -62,7 +62,7 @@ class Sidebar(ctk.CTkFrame):
         self._construir()
 
     def _construir(self):
-        usuario = get_usuario_actual()
+        usuario = api_client.usuario
 
         # ─── LOGO (fila 0) ────────────────────────────────────
         top = ctk.CTkFrame(self, fg_color="transparent")
@@ -124,7 +124,7 @@ class Sidebar(ctk.CTkFrame):
             else:
                 texto, destino, permiso, icono = item
 
-                if permiso and not tiene_permiso(permiso):
+                if permiso and not api_client.tiene_permiso(permiso):
                     continue
 
                 btn = self._crear_boton(scroll, f"{icono}  {texto}", destino)
@@ -153,7 +153,7 @@ class Sidebar(ctk.CTkFrame):
                 4: ("⬡", "Centro de Costos",  "#f97316"),
             }
             simbolo, rol, color_rol = nivel_info.get(
-                usuario.nivel, ("●", "Usuario", "#94a3b8"))
+                usuario["nivel"], ("●", "Usuario", "#94a3b8"))
 
             usuario_row = ctk.CTkFrame(footer, fg_color="transparent")
             usuario_row.grid(row=1, column=0, sticky="ew", padx=14, pady=(10, 6))
@@ -167,7 +167,7 @@ class Sidebar(ctk.CTkFrame):
                 width=28
             ).grid(row=0, column=0, rowspan=2)
 
-            nombre_corto = usuario.nombre_completo[:24]
+            nombre_corto = usuario["nombre_completo"][:24]
             ctk.CTkLabel(
                 usuario_row,
                 text=nombre_corto,

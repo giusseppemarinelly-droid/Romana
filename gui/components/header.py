@@ -4,7 +4,7 @@
 
 import customtkinter as ctk
 from datetime import datetime
-from services.auth_service import get_usuario_actual
+from client.api_client import api_client
 from config import UI
 
 
@@ -67,7 +67,7 @@ class Header(ctk.CTkFrame):
         ).grid(row=0, column=3, sticky="ns", pady=12)
 
         # Usuario logueado con badge de rol
-        usuario = get_usuario_actual()
+        usuario = api_client.usuario
         if usuario:
             nivel_info = {
                 1: ("Administrador", UI["color_accent"]),
@@ -75,7 +75,7 @@ class Header(ctk.CTkFrame):
                 3: ("Operador",      UI["color_success"]),
             }
             rol_texto, rol_color = nivel_info.get(
-                usuario.nivel, ("Usuario", UI["color_muted"]))
+                usuario["nivel"], ("Usuario", UI["color_muted"]))
 
             user_frame = ctk.CTkFrame(self, fg_color="transparent")
             user_frame.grid(row=0, column=4, padx=(16, 20), pady=8)
@@ -98,7 +98,7 @@ class Header(ctk.CTkFrame):
 
             ctk.CTkLabel(
                 user_frame,
-                text=f"  {usuario.nombre_completo}",
+                text=f"  {usuario['nombre_completo']}",
                 font=ctk.CTkFont(family=UI["fuente"], size=12),
                 text_color=UI["color_text"]
             ).pack(anchor="e")

@@ -3,10 +3,15 @@
 # ============================================================
 
 import customtkinter as ctk
-from services.auth_service import get_usuario_actual, tiene_permiso
-from services.pesaje_service import listar_pesadas_pendientes, listar_pesadas_completadas
+from client.api_client import api_client, ApiError
 from datetime import datetime
 from config import UI
+
+
+def _hora(iso_str):
+    if not iso_str:
+        return "-"
+    return datetime.fromisoformat(iso_str).strftime("%H:%M:%S")
 
 
 class DashboardView(ctk.CTkFrame):
@@ -25,7 +30,7 @@ class DashboardView(ctk.CTkFrame):
 
     def _construir(self):
         """Construye el dashboard."""
-        usuario = get_usuario_actual()
+        usuario = api_client.usuario
 
         self.grid_columnconfigure(0, weight=1)
         self.grid_rowconfigure(2, weight=1)
@@ -36,7 +41,7 @@ class DashboardView(ctk.CTkFrame):
 
         hora = datetime.now().hour
         saludo = "Buenos días" if hora < 12 else "Buenas tardes" if hora < 18 else "Buenas noches"
-        nombre = usuario.nombre_completo if usuario else "Usuario"
+        nombre = usuario["nombre_completo"] if usuario else "Usuario"
 
         ctk.CTkLabel(
             saludo_frame,
@@ -57,12 +62,15 @@ class DashboardView(ctk.CTkFrame):
         metrics_frame.grid(row=1, column=0, sticky="ew", padx=25, pady=15)
 
         # Obtener datos
-        pendientes = listar_pesadas_pendientes()
-        completadas = listar_pesadas_completadas(limit=500)
+        try:
+            pendientes = api_client.listar_pesadas_en_planta()
+            completadas = api_client.listar_pesadas_completadas(limit=500)
+        except ApiError:
+            pendientes, completadas = [], []
         hoy = datetime.now().date()
         completadas_hoy = [p for p in completadas
-                           if p.fecha_salida and p.fecha_salida.date() == hoy]
-        total_neto_hoy = sum(float(p.peso_neto or 0) for p in completadas_hoy)
+                           if p["fecha_salida"] and datetime.fromisoformat(p["fecha_salida"]).date() == hoy]
+        total_neto_hoy = sum(float(p["peso_neto"] or 0) for p in completadas_hoy)
 
         metricas = [
             ("🚛", "Camiones en Planta", str(len(pendientes)),       UI["color_warning"],       "pesaje_salida"),
@@ -139,7 +147,7 @@ class DashboardView(ctk.CTkFrame):
         ]
 
         for texto, destino, primario, permiso in accesos:
-            if not tiene_permiso(permiso):
+            if not api_client.tiene_permiso(permiso):
                 continue
             if primario:
                 # Botón principal: azul sólido, sin borde
@@ -246,11 +254,11 @@ class DashboardView(ctk.CTkFrame):
                 fila.pack(fill="x", pady=1)
 
                 datos = [
-                    p.numero_ticket,
-                    p.vehiculo.placa if p.vehiculo else "-",
-                    (p.conductor.nombre[:15] if p.conductor else "-"),
-                    f"{float(p.peso_bruto or 0):,.0f}",
-                    p.fecha_entrada.strftime("%H:%M:%S") if p.fecha_entrada else "-"
+                    p["numero_ticket"],
+                    p["vehiculo"]["placa"] if p["vehiculo"] else "-",
+                    (p["conductor"]["nombre"][:15] if p["conductor"] else "-"),
+                    f"{float(p['peso_bruto'] or 0):,.0f}",
+                    _hora(p["fecha_entrada"])
                 ]
                 anchos = [100, 80, 140, 90, 120]
 

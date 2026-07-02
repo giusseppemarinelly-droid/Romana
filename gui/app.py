@@ -88,11 +88,11 @@ class App(ctk.CTk):
         Callback que se llama cuando el login fue exitoso.
         Si es nivel 4 (CC), va directo a la vista de aprobaciones.
         """
-        from services.auth_service import get_usuario_actual
-        usuario = get_usuario_actual()
+        from client.api_client import api_client
+        usuario = api_client.usuario
         self._mostrar_dashboard()
         # Redirigir CC directamente a su vista
-        if usuario and usuario.nivel == 4:
+        if usuario and usuario["nivel"] == 4:
             self.navegar("centro_costos")
 
     def _mostrar_dashboard(self):
@@ -109,8 +109,6 @@ class App(ctk.CTk):
         Construye el layout de 3 columnas:
          [Sidebar] | [Header + ContentArea]
         """
-        from services.auth_service import get_usuario_actual
-
         # Frame raíz que divide sidebar y contenido
         self._main_frame = ctk.CTkFrame(self, fg_color="transparent")
         self._main_frame.pack(fill="both", expand=True)
@@ -278,8 +276,6 @@ class App(ctk.CTk):
 
     def _on_logout(self):
         """Cierra la sesión y vuelve al login."""
-        from services.auth_service import logout
         from client.api_client import api_client
-        logout()
         api_client.logout()
         self._mostrar_login()

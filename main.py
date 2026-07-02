@@ -4,10 +4,13 @@
 # Este es el archivo que ejecutas para iniciar el programa:
 #   python main.py
 #
-# Hace 3 cosas:
-#   1. Inicializa la base de datos (crea tablas si no existen)
-#   2. Inicializa el display de pesaje (simulador por defecto)
-#   3. Lanza la interfaz gráfica
+# Hace 2 cosas:
+#   1. Inicializa el display de pesaje (simulador por defecto)
+#   2. Lanza la interfaz gráfica
+#
+# Requiere que el backend ya esté corriendo (`python run_server.py`,
+# ver README.md) — esta GUI le habla por HTTP/WebSocket, no toca la
+# base de datos directamente.
 
 import sys
 import os
@@ -27,22 +30,13 @@ def main():
     print("=" * 60)
 
     # -------------------------------------------------------
-    # PASO 1: Inicializar base de datos
+    # PASO 1: Inicializar display de pesaje
     # -------------------------------------------------------
-    print("\n📦 Iniciando base de datos...")
-    try:
-        from database.seed import inicializar_base_de_datos
-        inicializar_base_de_datos()
-    except Exception as e:
-        print(f"❌ Error crítico en base de datos: {e}")
-        import traceback
-        traceback.print_exc()
-        sys.exit(1)
-
-
-    # -------------------------------------------------------
-    # PASO 2: Inicializar display de pesaje
-    # -------------------------------------------------------
+    # La base de datos ya NO se inicializa acá: esta es la estación GUI
+    # (Romana o Centro de Costos), que le habla al backend por HTTP
+    # (ver client/api_client.py) y no necesita conectividad directa a
+    # Postgres. El backend (run_server.py) es quien crea las tablas al
+    # arrancar — ver backend/main.py.
     print("\n⚖️  Iniciando display de pesaje...")
     try:
         from hardware.display_manager import inicializar_display
@@ -68,7 +62,7 @@ def main():
         print(f"⚠️  Error iniciando display: {e}. Continuando sin display...")
 
     # -------------------------------------------------------
-    # PASO 3: Lanzar interfaz gráfica
+    # PASO 2: Lanzar interfaz gráfica
     # -------------------------------------------------------
     print("\n🖥️  Iniciando interfaz gráfica...")
     try:

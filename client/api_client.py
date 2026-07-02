@@ -15,6 +15,7 @@ from typing import Any, Optional
 import httpx
 
 from config import API_BASE_URL
+from services.auth_service import PERMISOS
 
 
 class ApiClient:
@@ -40,14 +41,6 @@ class ApiClient:
         self._token = data["access_token"]
         self.usuario = data["usuario"]
 
-        # Shim de compatibilidad: la GUI aún no migrada (sidebar, header,
-        # tiene_permiso(), etc.) sigue leyendo el usuario logueado desde
-        # el global de services.auth_service. Se elimina en la fase de
-        # limpieza final, cuando toda la GUI use exclusivamente este
-        # cliente HTTP.
-        from services.auth_service import _establecer_usuario_actual
-        _establecer_usuario_actual(data["usuario"]["id"])
-
         return {
             "exito": True,
             "mensaje": f"Bienvenido, {data['usuario']['nombre_completo']}",
@@ -66,6 +59,21 @@ class ApiClient:
     @property
     def token(self) -> Optional[str]:
         return self._token
+
+    def get_nivel_actual(self) -> int:
+        return self.usuario["nivel"] if self.usuario else 0
+
+    def tiene_permiso(self, accion: str) -> bool:
+        """
+        Reemplaza a services.auth_service.tiene_permiso(): antes leía el
+        nivel del usuario desde el global _usuario_actual, ahora lo lee
+        del login de esta misma instancia de ApiClient. La autoridad real
+        sigue siendo el backend (Depends(requiere_permiso(...)) en cada
+        endpoint) — esto solo decide qué botones mostrar en la GUI.
+        """
+        if not self.usuario:
+            return False
+        return self.usuario["nivel"] in PERMISOS.get(accion, [])
 
     # ------------------------------------------------------------
     # Helpers HTTP genéricos
@@ -207,6 +215,30 @@ class ApiClient:
         'pesaje_entrada' (niveles 1-3), a diferencia de crear_maestro
         ('maestros_crear', solo 1-2)."""
         return self._mutar("POST", "/api/v1/vehiculos/autoregistro", datos)
+
+    # ------------------------------------------------------------
+    # Dominio: administración (mapea 1:1 backend/routers/admin.py)
+    # ------------------------------------------------------------
+    def listar_usuarios(self) -> list:
+        return self.get("/api/v1/usuarios")
+
+    def crear_usuario(self, username: str, password: str, nombre_completo: str, nivel: int) -> dict:
+        return self._mutar("POST", "/api/v1/usuarios", {
+            "username": username, "password": password,
+            "nombre_completo": nombre_completo, "nivel": nivel,
+        })
+
+    def cambiar_password(self, usuario_id: int, nueva_password: str) -> dict:
+        return self._mutar("POST", f"/api/v1/usuarios/{usuario_id}/password", {"nueva_password": nueva_password})
+
+    def activar_desactivar_usuario(self, usuario_id: int, activo: bool) -> dict:
+        return self._mutar("PATCH", f"/api/v1/usuarios/{usuario_id}/activo", {"activo": activo})
+
+    def listar_configuracion(self) -> list:
+        return self.get("/api/v1/configuracion")
+
+    def actualizar_configuracion(self, clave: str, valor: str) -> dict:
+        return self._mutar("PUT", f"/api/v1/configuracion/{clave}", {"valor": valor})
 
     # ------------------------------------------------------------
     # Dominio: reportes (mapea 1:1 backend/routers/reportes.py)

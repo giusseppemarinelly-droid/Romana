@@ -2,41 +2,30 @@
 # services/auth_service.py — Servicio de Autenticación
 # ============================================================
 # Este módulo maneja TODO lo relacionado con usuarios:
-#   - Login y logout
 #   - Verificación de contraseñas
-#   - Control de permisos por nivel
-#   - Sesión activa del usuario
+#   - Definición de permisos por nivel (PERMISOS es la fuente de verdad
+#     que usan tanto backend/deps.py — autoridad real, servidor — como
+#     client/api_client.py.tiene_permiso() — solo decide qué mostrar
+#     en la GUI)
+#   - Gestión de usuarios (alta, cambio de password, activar/desactivar)
 #
 # ¿Qué es un "servicio"?
 #   Es la capa de LÓGICA DE NEGOCIO. No se mezcla con la GUI
 #   ni con la base de datos directamente. Recibe datos, los
 #   procesa y devuelve resultados.
+#
+# Nota histórica: este módulo tuvo alguna vez un singleton de proceso
+# (`_usuario_actual`) que guardaba "quién está logueado" — un patrón
+# válido para una app de escritorio de un solo usuario, pero incorrecto
+# para un backend HTTP donde cada request puede ser de un usuario
+# distinto. Se eliminó al terminar la migración a cliente-servidor;
+# ahora "quién está logueado" vive en el JWT de cada request (backend)
+# o en `client.api_client.api_client.usuario` (GUI).
 
 import bcrypt
 from datetime import datetime
-from typing import Optional
 from database.engine import SessionLocal
 from database.models import Usuario
-
-
-# ============================================================
-# SESIÓN ACTIVA
-# ============================================================
-# Variable global que guarda el usuario que está logueado.
-# Es None cuando nadie está logueado.
-_usuario_actual: Optional[Usuario] = None
-
-
-def get_usuario_actual() -> Optional[Usuario]:
-    """Devuelve el usuario que está actualmente logueado."""
-    return _usuario_actual
-
-
-def get_nivel_actual() -> int:
-    """Devuelve el nivel del usuario logueado (0 si nadie está logueado)."""
-    if _usuario_actual:
-        return _usuario_actual.nivel
-    return 0
 
 
 # ============================================================
@@ -71,38 +60,15 @@ PERMISOS = {
 }
 
 
-def tiene_permiso(accion: str) -> bool:
-    """
-    Verifica si el usuario logueado tiene permiso para una acción.
-
-    Uso:
-        if tiene_permiso("pesaje_anular"):
-            # mostrar botón de anulación
-        else:
-            # ocultar el botón
-
-    Args:
-        accion: Nombre de la acción (debe estar en el dict PERMISOS)
-
-    Returns:
-        True si el usuario tiene permiso, False si no.
-    """
-    if _usuario_actual is None:
-        return False  # Si no hay nadie logueado, ningún permiso
-
-    niveles_permitidos = PERMISOS.get(accion, [])
-    return _usuario_actual.nivel in niveles_permitidos
-
-
 # ============================================================
-# LOGIN / LOGOUT
+# LOGIN
 # ============================================================
 
 def verificar_credenciales(db, username: str, password: str) -> dict:
     """
-    Verifica usuario/contraseña contra la BD SIN tocar la sesión global
-    (`_usuario_actual`). Es la función que usa el backend HTTP: cada
-    request es independiente, no hay "usuario logueado" a nivel de proceso.
+    Verifica usuario/contraseña contra la BD. La usa
+    backend/routers/auth.py en cada request de login — es stateless,
+    no guarda nada a nivel de proceso.
 
     Recibe una sesión `db` ya abierta (el llamador es responsable de
     cerrarla) para poder actualizar `last_login` sin abrir una segunda
@@ -143,58 +109,6 @@ def verificar_credenciales(db, username: str, password: str) -> dict:
         "usuario": usuario,
         "nivel_nombre": nivel_nombre.get(usuario.nivel, "Desconocido")
     }
-
-
-def login(username: str, password: str) -> dict:
-    """
-    Autentica y además guarda el usuario en la sesión global `_usuario_actual`.
-
-    NOTA DE MIGRACIÓN: esta función y `_usuario_actual` existen solo para
-    las vistas de `gui/` que todavía no fueron migradas a la API HTTP
-    (cliente-servidor). El backend (`backend/routers/auth.py`) usa
-    `verificar_credenciales()` directamente y nunca toca este global,
-    porque en HTTP cada request puede venir de un usuario distinto —
-    un singleton de proceso sería incorrecto ahí. Cuando todas las
-    vistas de `gui/` pasen a usar `client/api_client.py` (fase de
-    limpieza final de la migración), esta función y el global se eliminan.
-
-    Returns:
-        dict con "exito", "mensaje", "usuario" (objeto Usuario o None).
-    """
-    global _usuario_actual
-
-    db = SessionLocal()
-    try:
-        resultado = verificar_credenciales(db, username, password)
-        if resultado["exito"]:
-            _usuario_actual = resultado["usuario"]
-        return resultado
-    except Exception as e:
-        return {"exito": False, "mensaje": f"Error de sistema: {str(e)}", "usuario": None}
-    finally:
-        db.close()
-
-
-def logout():
-    """Cierra la sesión del usuario actual."""
-    global _usuario_actual
-    _usuario_actual = None
-
-
-def _establecer_usuario_actual(usuario_id: int):
-    """
-    Sincroniza `_usuario_actual` a partir de un usuario ya autenticado
-    por otro medio — hoy, `client/api_client.py` tras un login exitoso
-    contra el backend HTTP. Shim de compatibilidad para la GUI aún no
-    migrada (sidebar, header, tiene_permiso()); se elimina en la fase
-    de limpieza final de la migración a cliente-servidor.
-    """
-    global _usuario_actual
-    db = SessionLocal()
-    try:
-        _usuario_actual = db.query(Usuario).filter_by(id=usuario_id).first()
-    finally:
-        db.close()
 
 
 # ============================================================

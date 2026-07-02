@@ -1,3 +1,6 @@
+from datetime import datetime
+from typing import Optional
+
 from pydantic import BaseModel, ConfigDict
 
 
@@ -14,6 +17,7 @@ class UsuarioOut(BaseModel):
     nombre_completo: str
     nivel: int
     activo: bool
+    last_login: Optional[datetime] = None
 
 
 class LoginResponse(BaseModel):
