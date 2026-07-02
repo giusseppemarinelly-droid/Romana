@@ -588,6 +588,15 @@ def anular_pesada(pesada_id: int, motivo: str) -> dict:
 # ============================================================
 # CORTE
 # ============================================================
+def listar_cortes(limit: int = 20) -> list:
+    from database.models import Corte
+    db = SessionLocal()
+    try:
+        return db.query(Corte).order_by(Corte.id.desc()).limit(limit).all()
+    finally:
+        db.close()
+
+
 def realizar_corte(observaciones: str = "", usuario_id: Optional[int] = None) -> dict:
     from database.models import Corte
     db = SessionLocal()

@@ -127,6 +127,41 @@ router_vehiculos = crear_router_maestro(
     columnas_busqueda=["placa", "descripcion"], orden_por="placa",
 )
 
+
+def _autoregistrar_vehiculo_sync(body: VehiculoIn) -> Vehiculo:
+    db = SessionLocal()
+    try:
+        item = Vehiculo(**body.model_dump())
+        db.add(item)
+        try:
+            db.commit()
+        except IntegrityError:
+            db.rollback()
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Ya existe un vehículo con esa placa")
+        db.refresh(item)
+        return item
+    finally:
+        db.close()
+
+
+@router_vehiculos.post(
+    "/autoregistro", response_model=VehiculoOut, status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(requiere_permiso("pesaje_entrada"))],
+)
+async def autoregistrar_vehiculo(body: VehiculoIn):
+    """
+    Registro rápido de un vehículo no catalogado al momento de pesar.
+
+    A diferencia de POST /vehiculos (requiere "maestros_crear", solo
+    niveles 1-2), esto lo puede hacer cualquiera con permiso de
+    "pesaje_entrada" (niveles 1-3) — es exactamente el caso de uso que
+    tenía la GUI antes de la migración: el operador de Romana no puede
+    quedar bloqueado esperando a un supervisor solo porque un camión
+    todavía no está en el catálogo de vehículos.
+    """
+    return await run_in_threadpool(_autoregistrar_vehiculo_sync, body)
+
+
 router_conductores = crear_router_maestro(
     prefix="/conductores", tag="conductores", modelo=Conductor,
     schema_out=ConductorOut, schema_in=ConductorIn,

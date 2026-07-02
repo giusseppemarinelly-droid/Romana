@@ -5,11 +5,7 @@
 import customtkinter as ctk
 from tkinter import messagebox
 from config import UI
-from services.pesaje_service import (
-    registrar_entrada, buscar_vehiculo_por_placa,
-    listar_vehiculos_activos, listar_conductores_activos,
-    listar_productos_por_tipo
-)
+from client.api_client import api_client, ApiError
 from hardware.display_manager import leer_peso_actual, es_peso_estable
 
 
@@ -155,10 +151,14 @@ class PesajeEntradaView(ctk.CTkFrame):
         row += 2
 
         # Cargar vehículos en el combo
-        vehiculos = listar_vehiculos_activos()
-        self._vehiculos_map = {v.placa: v for v in vehiculos}
+        try:
+            vehiculos = api_client.listar_maestro("vehiculos")
+        except ApiError as e:
+            messagebox.showerror("Error de conexión", str(e))
+            vehiculos = []
+        self._vehiculos_map = {v["placa"]: v for v in vehiculos}
         self._combo_vehiculo.configure(
-            values=["-- Seleccione --"] + [v.placa for v in vehiculos]
+            values=["-- Seleccione --"] + [v["placa"] for v in vehiculos]
         )
         self._combo_vehiculo.set("-- Seleccione --")
         self._combo_vehiculo.configure(command=self._on_vehiculo_changed)
@@ -308,9 +308,20 @@ class PesajeEntradaView(ctk.CTkFrame):
 
     # ----------------------------------------------------------
     def _cargar_productos(self, tipo: str):
-        """Carga la lista de productos según el tipo de pesaje."""
-        self._productos_cache = listar_productos_por_tipo(tipo)
-        nombres = [f"{p.codigo} — {p.nombre}" for p in self._productos_cache]
+        """Carga la lista de productos según el tipo de pesaje.
+
+        El filtro por tipo_pesaje se hace en memoria (no hay endpoint
+        dedicado): el catálogo de productos es chico, a diferencia del
+        buscador de vehículos/conductores que sí necesitaba búsqueda
+        indexada en servidor.
+        """
+        try:
+            todos = api_client.listar_maestro("productos")
+        except ApiError as e:
+            messagebox.showerror("Error de conexión", str(e))
+            todos = []
+        self._productos_cache = [p for p in todos if p["tipo_pesaje"] == tipo]
+        nombres = [f"{p['codigo']} — {p['nombre']}" for p in self._productos_cache]
         self._combo_producto.configure(
             values=["-- Seleccione --"] + nombres
         )
@@ -346,9 +357,9 @@ class PesajeEntradaView(ctk.CTkFrame):
         v = self._vehiculos_map.get(seleccion)
         if v:
             self._vehiculo_seleccionado = v
-            tara = f"{float(v.tara_registrada):,.0f}" if v.tara_registrada else "N/A"
+            tara = f"{float(v['tara_registrada']):,.0f}" if v["tara_registrada"] else "N/A"
             self._lbl_vehiculo_info.configure(
-                text=f"{v.descripcion or ''}  |  Tara registrada: {tara} KG"
+                text=f"{v['descripcion'] or ''}  |  Tara registrada: {tara} KG"
             )
             self._lbl_resumen_veh.configure(text=f"Vehículo: {seleccion}")
 
@@ -361,11 +372,11 @@ class PesajeEntradaView(ctk.CTkFrame):
         v = self._vehiculos_map.get(placa)
         if v:
             self._vehiculo_seleccionado = v
-            tara = f"{float(v.tara_registrada):,.0f}" if v.tara_registrada else "N/A"
+            tara = f"{float(v['tara_registrada']):,.0f}" if v["tara_registrada"] else "N/A"
             self._lbl_vehiculo_info.configure(
-                text=f"{v.descripcion or ''}  |  Tara: {tara} KG"
+                text=f"{v['descripcion'] or ''}  |  Tara: {tara} KG"
             )
-            self._lbl_resumen_veh.configure(text=f"Vehículo: {v.placa}")
+            self._lbl_resumen_veh.configure(text=f"Vehículo: {v['placa']}")
         else:
             messagebox.showinfo("No encontrado",
                 f"Placa '{placa}' no está registrada.\n"
@@ -418,8 +429,12 @@ class PesajeEntradaView(ctk.CTkFrame):
         # Si el vehículo no está en el mapa, lo buscamos o pedimos registrarlo
         vehiculo = self._vehiculo_seleccionado
         if vehiculo is None:
-            from services.pesaje_service import buscar_vehiculo_por_placa
-            vehiculo = buscar_vehiculo_por_placa(placa_raw)
+            try:
+                encontrados = api_client.listar_maestro("vehiculos", search=placa_raw)
+            except ApiError as e:
+                messagebox.showerror("Error de conexión", str(e))
+                return
+            vehiculo = next((v for v in encontrados if v["placa"] == placa_raw.upper()), None)
             if vehiculo is None:
                 if not messagebox.askyesno("Vehículo no registrado",
                     f"La placa '{placa_raw.upper()}' no está en el sistema.\n\n"
@@ -427,22 +442,17 @@ class PesajeEntradaView(ctk.CTkFrame):
                     "(El vehículo quedará pendiente de registro en Maestros)"):
                     return
                 # Crear vehículo temporal
-                from database.engine import SessionLocal
-                from database.models import Vehiculo
-                db = SessionLocal()
-                try:
-                    veh_tmp = Vehiculo(
-                        placa=placa_raw.upper(),
-                        descripcion="Registrado automáticamente",
-                        tara_registrada=0,
-                        tipo="camion"
-                    )
-                    db.add(veh_tmp)
-                    db.commit()
-                    db.refresh(veh_tmp)
-                    vehiculo = veh_tmp
-                finally:
-                    db.close()
+                resultado_veh = api_client.autoregistrar_vehiculo({
+                    "placa": placa_raw.upper(),
+                    "descripcion": "Registrado automáticamente",
+                    "tara_registrada": 0,
+                    "tipo": "camion",
+                    "proveedor_id": None,
+                })
+                if not resultado_veh["exito"]:
+                    messagebox.showerror("Error", resultado_veh["mensaje"])
+                    return
+                vehiculo = resultado_veh["data"]
 
         # Tipo de pesaje
         tipo_raw = self._tipo_var.get()
@@ -454,13 +464,13 @@ class PesajeEntradaView(ctk.CTkFrame):
         if prod_sel and prod_sel != "-- Seleccione --":
             codigo_sel = prod_sel.split(" — ")[0]
             for p in self._productos_cache:
-                if p.codigo == codigo_sel:
-                    producto_id = p.id
+                if p["codigo"] == codigo_sel:
+                    producto_id = p["id"]
                     break
 
-        resultado = registrar_entrada(
+        resultado = api_client.registrar_entrada(
             peso_bruto=float(peso),
-            vehiculo_id=vehiculo.id,
+            vehiculo_id=vehiculo["id"],
             tipo_pesaje=tipo_key,
             producto_id=producto_id,
             empresa_transportista=self._entry_transportista.get().strip(),

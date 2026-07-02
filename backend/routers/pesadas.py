@@ -141,13 +141,25 @@ async def pesada_activa_por_vehiculo(vehiculo_id: int):
     return await run_in_threadpool(pesaje_service.get_pesada_en_planta_por_vehiculo, vehiculo_id)
 
 
-@router.get("/{pesada_id}", response_model=PesadaOut)
-async def obtener_pesada(pesada_id: int):
-    return await _obtener_pesada(pesada_id)
-
-
+# IMPORTANTE: las rutas literales de /cortes deben registrarse ANTES que
+# GET /{pesada_id} — Starlette matchea rutas en orden de registro, y
+# {pesada_id} (sin convertor de tipo en el path) acepta cualquier
+# segmento como string a nivel de ruteo; el "int" del parámetro solo se
+# valida DESPUÉS de que la ruta ya matcheó. Si /cortes quedara después,
+# GET /pesadas/cortes intentaría interpretar "cortes" como pesada_id y
+# fallaría con 422 en vez de resolver a este endpoint.
 @router.post("/cortes", response_model=CorteOut, dependencies=[Depends(requiere_permiso("corte_pesadas"))])
 async def crear_corte(body: CorteIn, usuario: Usuario = Depends(get_current_user)):
     resultado = await run_in_threadpool(pesaje_service.realizar_corte, body.observaciones, usuario.id)
     _fallo_si_no_exito(resultado)
     return resultado["corte"]
+
+
+@router.get("/cortes", response_model=list[CorteOut], dependencies=[Depends(requiere_permiso("corte_pesadas"))])
+async def listar_cortes(limit: int = 20):
+    return await run_in_threadpool(pesaje_service.listar_cortes, limit)
+
+
+@router.get("/{pesada_id}", response_model=PesadaOut)
+async def obtener_pesada(pesada_id: int):
+    return await _obtener_pesada(pesada_id)

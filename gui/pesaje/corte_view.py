@@ -4,11 +4,15 @@
 
 import customtkinter as ctk
 from tkinter import messagebox
-from services.pesaje_service import realizar_corte, get_kardex
 from datetime import datetime
-from database.engine import SessionLocal
-from database.models import Corte
+from client.api_client import api_client, ApiError
 from config import UI
+
+
+def _fecha_hora(iso_str):
+    if not iso_str:
+        return "—"
+    return datetime.fromisoformat(iso_str).strftime("%d/%m/%Y %H:%M")
 
 
 class CorteView(ctk.CTkFrame):
@@ -128,75 +132,81 @@ class CorteView(ctk.CTkFrame):
 
     def _calcular_resumen(self) -> dict:
         """Calcula el resumen del período pendiente de corte."""
-        db = SessionLocal()
         try:
-            ultimo = db.query(Corte).order_by(Corte.id.desc()).first()
-            desde = ultimo.fecha_fin if ultimo else datetime(2000, 1, 1)
-            desde_str = desde.strftime("%d/%m/%Y %H:%M") if ultimo else "Inicio"
-            num = ultimo.numero_corte if ultimo else 0
+            ultimos = api_client.listar_cortes(limit=1)
+        except ApiError as e:
+            messagebox.showerror("Error de conexión", str(e))
+            return {"desde": "Inicio", "total_pesadas": 0, "total_neto": 0.0, "ultimo_numero": 0}
 
-            pesadas = get_kardex(fecha_inicio=desde, estado="completada")
-            total_neto = sum(float(p.peso_neto or 0) for p in pesadas)
+        ultimo = ultimos[0] if ultimos else None
+        desde_dt = datetime.fromisoformat(ultimo["fecha_fin"]) if ultimo else datetime(2000, 1, 1)
+        desde_str = _fecha_hora(ultimo["fecha_fin"]) if ultimo else "Inicio"
+        num = ultimo["numero_corte"] if ultimo else 0
 
-            return {
-                "desde": desde_str,
-                "total_pesadas": len(pesadas),
-                "total_neto": total_neto,
-                "ultimo_numero": num
-            }
-        finally:
-            db.close()
+        try:
+            # El estado se llama "completado" en la máquina de estados de Pesada
+            # (services/pesaje_service.py) — antes de la migración este filtro
+            # decía "completada" y por eso el resumen siempre daba 0 pesadas.
+            pesadas = api_client.get_kardex(fecha_inicio=desde_dt.isoformat(), estado="completado")
+        except ApiError as e:
+            messagebox.showerror("Error de conexión", str(e))
+            pesadas = []
+        total_neto = sum(float(p["peso_neto"] or 0) for p in pesadas)
+
+        return {
+            "desde": desde_str,
+            "total_pesadas": len(pesadas),
+            "total_neto": total_neto,
+            "ultimo_numero": num
+        }
 
     def _cargar_historial(self):
         """Carga el historial de cortes previos."""
         for w in self._scroll_cortes.winfo_children():
             w.destroy()
 
-        db = SessionLocal()
         try:
-            cortes = db.query(Corte).order_by(Corte.id.desc()).limit(20).all()
+            cortes = api_client.listar_cortes(limit=20)
+        except ApiError as e:
+            messagebox.showerror("Error de conexión", str(e))
+            cortes = []
 
-            if not cortes:
-                ctk.CTkLabel(
-                    self._scroll_cortes,
-                    text="No hay cortes realizados aún",
-                    font=ctk.CTkFont(size=12),
-                    text_color=UI["color_muted"]
-                ).pack(pady=30)
-                return
+        if not cortes:
+            ctk.CTkLabel(
+                self._scroll_cortes,
+                text="No hay cortes realizados aún",
+                font=ctk.CTkFont(size=12),
+                text_color=UI["color_muted"]
+            ).pack(pady=30)
+            return
 
-            for c in cortes:
-                card = ctk.CTkFrame(
-                    self._scroll_cortes,
-                    fg_color=UI["color_bg"], corner_radius=8
-                )
-                card.pack(fill="x", pady=3, padx=5)
+        for c in cortes:
+            card = ctk.CTkFrame(
+                self._scroll_cortes,
+                fg_color=UI["color_bg"], corner_radius=8
+            )
+            card.pack(fill="x", pady=3, padx=5)
 
-                ctk.CTkLabel(
-                    card,
-                    text=f"✂️ Corte #{c.numero_corte}",
-                    font=ctk.CTkFont(size=13, weight="bold"),
-                    text_color=UI["color_warning"]
-                ).pack(anchor="w", padx=12, pady=(8, 2))
+            ctk.CTkLabel(
+                card,
+                text=f"✂️ Corte #{c['numero_corte']}",
+                font=ctk.CTkFont(size=13, weight="bold"),
+                text_color=UI["color_warning"]
+            ).pack(anchor="w", padx=12, pady=(8, 2))
 
-                desde = c.fecha_inicio.strftime("%d/%m/%Y %H:%M") if c.fecha_inicio else "—"
-                hasta = c.fecha_fin.strftime("%d/%m/%Y %H:%M") if c.fecha_fin else "—"
+            ctk.CTkLabel(
+                card,
+                text=f"📅 {_fecha_hora(c['fecha_inicio'])} → {_fecha_hora(c['fecha_fin'])}",
+                font=ctk.CTkFont(size=11),
+                text_color=UI["color_muted"]
+            ).pack(anchor="w", padx=12)
 
-                ctk.CTkLabel(
-                    card,
-                    text=f"📅 {desde} → {hasta}",
-                    font=ctk.CTkFont(size=11),
-                    text_color=UI["color_muted"]
-                ).pack(anchor="w", padx=12)
-
-                ctk.CTkLabel(
-                    card,
-                    text=f"✅ {c.total_pesadas} pesadas  |  ⚖️ {float(c.total_neto_kg or 0):,.2f} KG",
-                    font=ctk.CTkFont(size=12),
-                    text_color=UI["color_success"]
-                ).pack(anchor="w", padx=12, pady=(0, 8))
-        finally:
-            db.close()
+            ctk.CTkLabel(
+                card,
+                text=f"✅ {c['total_pesadas']} pesadas  |  ⚖️ {float(c['total_neto_kg'] or 0):,.2f} KG",
+                font=ctk.CTkFont(size=12),
+                text_color=UI["color_success"]
+            ).pack(anchor="w", padx=12, pady=(0, 8))
 
     def _hacer_corte(self):
         """Ejecuta el corte."""
@@ -221,7 +231,7 @@ class CorteView(ctk.CTkFrame):
             return
 
         obs = self._txt_obs.get("1.0", "end").strip()
-        resultado = realizar_corte(obs)
+        resultado = api_client.realizar_corte(obs)
 
         if resultado["exito"]:
             messagebox.showinfo(

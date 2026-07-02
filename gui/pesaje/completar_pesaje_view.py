@@ -6,12 +6,17 @@
 
 import customtkinter as ctk
 from tkinter import messagebox, ttk
-from config import UI
-from services.pesaje_service import (
-    listar_aprobadas_pendientes_completar,
-    completar_pesaje
-)
+from datetime import datetime
+from config import UI, REPORTS_DIR
+from client.api_client import api_client, ApiError
 import os
+
+
+def _hora(iso_str):
+    """La API devuelve fechas como texto ISO 8601 — se parsean para mostrar solo HH:MM."""
+    if not iso_str:
+        return "—"
+    return datetime.fromisoformat(iso_str).strftime("%H:%M")
 
 
 class CompletarPesajeView(ctk.CTkFrame):
@@ -157,18 +162,22 @@ class CompletarPesajeView(ctk.CTkFrame):
         for item in self._tree.get_children():
             self._tree.delete(item)
 
-        pesadas = listar_aprobadas_pendientes_completar()
+        try:
+            pesadas = api_client.listar_aprobadas_pendientes()
+        except ApiError as e:
+            messagebox.showerror("Error de conexión", str(e))
+            pesadas = []
 
         for p in pesadas:
-            aprobado_por = (p.aprobado_por.nombre_completo[:16]
-                            if p.aprobado_por else "CC")
-            self._tree.insert("", "end", iid=str(p.id), values=(
-                p.numero_ticket,
-                p.vehiculo.placa if p.vehiculo else "—",
-                (p.producto.nombre[:16] if p.producto else "—"),
-                f"{float(p.peso_neto or 0):,.0f}",
+            aprobado_por = (p["aprobado_por"]["nombre_completo"][:16]
+                            if p["aprobado_por"] else "CC")
+            self._tree.insert("", "end", iid=str(p["id"]), values=(
+                p["numero_ticket"],
+                p["vehiculo"]["placa"] if p["vehiculo"] else "—",
+                (p["producto"]["nombre"][:16] if p["producto"] else "—"),
+                f"{float(p['peso_neto'] or 0):,.0f}",
                 aprobado_por,
-                p.fecha_aprobacion.strftime("%H:%M") if p.fecha_aprobacion else "—"
+                _hora(p["fecha_aprobacion"])
             ))
 
         self._lbl_count.configure(text=f"{len(pesadas)} pendiente(s)")
@@ -182,16 +191,11 @@ class CompletarPesajeView(ctk.CTkFrame):
             return
 
         pesada_id = int(sel[0])
-        from database.engine import SessionLocal
-        from database.models import Pesada
-        from services.pesaje_service import _pesada_options
-
-        db = SessionLocal()
         try:
-            p = db.query(Pesada).options(*_pesada_options()).filter_by(
-                id=pesada_id).first()
-        finally:
-            db.close()
+            p = api_client.obtener_pesada(pesada_id)
+        except ApiError as e:
+            messagebox.showerror("Error de conexión", str(e))
+            return
 
         if p:
             self._pesada_seleccionada = p
@@ -212,7 +216,7 @@ class CompletarPesajeView(ctk.CTkFrame):
         # Resumen de la pesada
         ctk.CTkLabel(
             self._form_frame,
-            text=f"Ticket {p.numero_ticket}",
+            text=f"Ticket {p['numero_ticket']}",
             font=ctk.CTkFont(family=UI["fuente"], size=15, weight="bold"),
             text_color=UI["color_success"]
         ).grid(row=row, column=0, sticky="w", pady=(0, 2)); row += 1
@@ -232,11 +236,11 @@ class CompletarPesajeView(ctk.CTkFrame):
         row += 1
 
         self._dato_rapido(info_frame, 0, "ENTRADA",
-            f"{float(p.peso_bruto or 0):,.0f} KG", UI["color_muted"])
+            f"{float(p['peso_bruto'] or 0):,.0f} KG", UI["color_muted"])
         self._dato_rapido(info_frame, 1, "SALIDA",
-            f"{float(p.peso_tara or 0):,.0f} KG", "#f59e0b")
+            f"{float(p['peso_tara'] or 0):,.0f} KG", "#f59e0b")
         self._dato_rapido(info_frame, 2, "NETO",
-            f"{float(p.peso_neto or 0):,.0f} KG", UI["color_success"])
+            f"{float(p['peso_neto'] or 0):,.0f} KG", UI["color_success"])
 
         # Separador
         ctk.CTkFrame(self._form_frame, height=1,
@@ -338,8 +342,8 @@ class CompletarPesajeView(ctk.CTkFrame):
                     "La cantidad debe ser un número válido.")
                 return
 
-        resultado = completar_pesaje(
-            pesada_id=self._pesada_seleccionada.id,
+        resultado = api_client.completar_pesaje(
+            pesada_id=self._pesada_seleccionada["id"],
             orden_compra=orden,
             cantidad=cantidad,
             precintos=precintos,
@@ -348,22 +352,26 @@ class CompletarPesajeView(ctk.CTkFrame):
 
         if resultado["exito"]:
             pesada = resultado["pesada"]
-            # Generar ticket PDF
+            # Generar ticket PDF — el servidor lo genera (Romana y Centro de
+            # Costos no comparten disco) y acá se guarda localmente para abrirlo.
             try:
-                from services.reporte_service import generar_ticket_pdf
-                ruta_pdf = generar_ticket_pdf(pesada)
+                pdf_bytes = api_client.descargar_ticket_pdf(pesada["id"])
+                os.makedirs(REPORTS_DIR, exist_ok=True)
+                ruta_pdf = os.path.join(REPORTS_DIR, f"TICKET_{pesada['numero_ticket']}.pdf")
+                with open(ruta_pdf, "wb") as f:
+                    f.write(pdf_bytes)
                 if messagebox.askyesno(
                     "Completado ✓",
-                    f"Pesada {pesada.numero_ticket} completada.\n"
-                    f"Neto: {float(pesada.peso_neto or 0):,.0f} KG\n\n"
+                    f"Pesada {pesada['numero_ticket']} completada.\n"
+                    f"Neto: {float(pesada['peso_neto'] or 0):,.0f} KG\n\n"
                     "¿Abrir el ticket PDF?"
                 ):
                     os.startfile(ruta_pdf)
-            except Exception:
+            except (ApiError, OSError):
                 messagebox.showinfo(
                     "Completado ✓",
-                    f"Pesada {pesada.numero_ticket} completada.\n"
-                    f"Neto: {float(pesada.peso_neto or 0):,.0f} KG"
+                    f"Pesada {pesada['numero_ticket']} completada.\n"
+                    f"Neto: {float(pesada['peso_neto'] or 0):,.0f} KG"
                 )
             self._cargar_lista()
         else:

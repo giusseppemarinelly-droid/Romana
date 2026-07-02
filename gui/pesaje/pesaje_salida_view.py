@@ -4,12 +4,17 @@
 
 import customtkinter as ctk
 from tkinter import messagebox, ttk
+from datetime import datetime
 from config import UI
-from services.pesaje_service import (
-    listar_pesadas_en_planta, capturar_peso_salida,
-    listar_aprobadas_pendientes_completar, anular_pesada
-)
+from client.api_client import api_client, ApiError
 from hardware.display_manager import leer_peso_actual, es_peso_estable
+
+
+def _hora(iso_str):
+    """La API devuelve fechas como texto ISO 8601 — se parsean para mostrar solo HH:MM."""
+    if not iso_str:
+        return "—"
+    return datetime.fromisoformat(iso_str).strftime("%H:%M")
 
 
 class PesajeSalidaView(ctk.CTkFrame):
@@ -166,39 +171,29 @@ class PesajeSalidaView(ctk.CTkFrame):
         for item in self._tree.get_children():
             self._tree.delete(item)
 
-        pesadas = listar_pesadas_en_planta()
-        # También mostrar rechazados (CC rechazó, Romana debe recapturar)
-        from services.pesaje_service import get_kardex
-        from database.engine import SessionLocal
-        from database.models import Pesada
-        from sqlalchemy.orm import joinedload
-
-        db = SessionLocal()
         try:
-            rechazadas = db.query(Pesada).filter(
-                Pesada.estado == "rechazado",
-                Pesada.anulada == False
-            ).all()
-        finally:
-            db.close()
+            pesadas = api_client.listar_pesadas_en_planta()
+            # También mostrar rechazados (CC rechazó, Romana debe recapturar)
+            rechazadas = api_client.get_kardex(estado="rechazado")
+        except ApiError as e:
+            messagebox.showerror("Error de conexión", str(e))
+            pesadas, rechazadas = [], []
 
         todos = pesadas + rechazadas
 
         for p in todos:
-            prod_nombre = (p.producto.nombre[:14] if p.producto else
-                           p.tipo_pesaje[:10] if hasattr(p, 'tipo_pesaje') else "—")
-            tipo = "General" if (not hasattr(p, 'tipo_pesaje') or
-                                  p.tipo_pesaje == "GENERAL") else "Prod. Term."
-            estado_texto = "🔴 Rechazado" if p.estado == "rechazado" else "🟡 En planta"
+            prod_nombre = p["producto"]["nombre"][:14] if p["producto"] else "—"
+            tipo = "General" if p["tipo_pesaje"] == "GENERAL" else "Prod. Term."
+            estado_texto = "🔴 Rechazado" if p["estado"] == "rechazado" else "🟡 En planta"
 
-            self._tree.insert("", "end", iid=str(p.id), values=(
-                p.numero_ticket,
-                p.vehiculo.placa if p.vehiculo else "—",
+            self._tree.insert("", "end", iid=str(p["id"]), values=(
+                p["numero_ticket"],
+                p["vehiculo"]["placa"] if p["vehiculo"] else "—",
                 tipo,
                 prod_nombre,
-                f"{float(p.peso_bruto or 0):,.0f} kg",
+                f"{float(p['peso_bruto'] or 0):,.0f} kg",
                 estado_texto,
-                p.fecha_entrada.strftime("%H:%M") if p.fecha_entrada else "—"
+                _hora(p["fecha_entrada"])
             ))
 
         self._lbl_count.configure(text=f"{len(todos)} camión(es)")
@@ -212,20 +207,11 @@ class PesajeSalidaView(ctk.CTkFrame):
             return
 
         pesada_id = int(sel[0])
-        # Buscar en la lista combinada
-        pesada = None
-        from services.pesaje_service import listar_pesadas_en_planta
-        from database.engine import SessionLocal
-        from database.models import Pesada
-        from sqlalchemy.orm import joinedload
-
-        db = SessionLocal()
         try:
-            from services.pesaje_service import _pesada_options
-            pesada = db.query(Pesada).options(*_pesada_options()).filter_by(
-                id=pesada_id).first()
-        finally:
-            db.close()
+            pesada = api_client.obtener_pesada(pesada_id)
+        except ApiError as e:
+            messagebox.showerror("Error de conexión", str(e))
+            return
 
         if pesada:
             self._pesada_seleccionada = pesada
@@ -247,14 +233,14 @@ class PesajeSalidaView(ctk.CTkFrame):
         # Título
         ctk.CTkLabel(
             self._detalle_frame,
-            text=f"🚛  {p.vehiculo.placa if p.vehiculo else '—'}",
+            text=f"🚛  {p['vehiculo']['placa'] if p['vehiculo'] else '—'}",
             font=ctk.CTkFont(family=UI["fuente"], size=18, weight="bold"),
             text_color=UI["color_text"]
         ).grid(row=row, column=0, sticky="w", pady=(0, 4)); row += 1
 
         ctk.CTkLabel(
             self._detalle_frame,
-            text=f"Ticket: {p.numero_ticket}",
+            text=f"Ticket: {p['numero_ticket']}",
             font=ctk.CTkFont(family=UI["fuente"], size=12),
             text_color=UI["color_muted"]
         ).grid(row=row, column=0, sticky="w", pady=(0, 10)); row += 1
@@ -266,27 +252,27 @@ class PesajeSalidaView(ctk.CTkFrame):
 
         # Info de entrada
         self._fila_info(self._detalle_frame, row, "Tipo:",
-            "Pesaje General" if p.tipo_pesaje == "GENERAL" else "Producto Terminado")
+            "Pesaje General" if p["tipo_pesaje"] == "GENERAL" else "Producto Terminado")
         row += 1
         self._fila_info(self._detalle_frame, row, "Producto:",
-            p.producto.nombre if p.producto else "—"); row += 1
+            p["producto"]["nombre"] if p["producto"] else "—"); row += 1
         self._fila_info(self._detalle_frame, row, "Empresa transp.:",
-            p.empresa_transportista or "—"); row += 1
+            p["empresa_transportista"] or "—"); row += 1
         self._fila_info(self._detalle_frame, row, "Empresa cliente:",
-            p.empresa_cliente_proveedor or "—"); row += 1
+            p["empresa_cliente_proveedor"] or "—"); row += 1
         self._fila_info(self._detalle_frame, row, "Peso entrada:",
-            f"{float(p.peso_bruto or 0):,.0f} KG",
+            f"{float(p['peso_bruto'] or 0):,.0f} KG",
             color=UI["color_accent"]); row += 1
 
         # Rechazo previo (si aplica)
-        if p.estado == "rechazado" and p.motivo_rechazo:
+        if p["estado"] == "rechazado" and p["motivo_rechazo"]:
             ctk.CTkFrame(self._detalle_frame, height=1,
                           fg_color="#fecaca").grid(
                 row=row, column=0, sticky="ew", pady=6); row += 1
 
             ctk.CTkLabel(
                 self._detalle_frame,
-                text=f"❌ RECHAZADO por CC:\n{p.motivo_rechazo}",
+                text=f"❌ RECHAZADO por CC:\n{p['motivo_rechazo']}",
                 font=ctk.CTkFont(family=UI["fuente"], size=11),
                 text_color="#dc2626",
                 wraplength=280, justify="left"
@@ -379,7 +365,7 @@ class PesajeSalidaView(ctk.CTkFrame):
 
             # Calcular neto estimado
             if self._pesada_seleccionada and peso > 0:
-                p1 = float(self._pesada_seleccionada.peso_bruto or 0)
+                p1 = float(self._pesada_seleccionada["peso_bruto"] or 0)
                 p2 = float(peso)
                 neto = abs(p2 - p1)
                 self._lbl_neto_preview.configure(
@@ -409,12 +395,12 @@ class PesajeSalidaView(ctk.CTkFrame):
             )
             return
 
-        p1 = float(self._pesada_seleccionada.peso_bruto or 0)
+        p1 = float(self._pesada_seleccionada["peso_bruto"] or 0)
         neto = abs(float(peso) - p1)
 
         if not messagebox.askyesno(
             "Confirmar captura",
-            f"Camión: {self._pesada_seleccionada.vehiculo.placa}\n"
+            f"Camión: {self._pesada_seleccionada['vehiculo']['placa']}\n"
             f"Peso entrada: {p1:,.0f} KG\n"
             f"Peso actual:  {peso:,.0f} KG\n"
             f"NETO:         {neto:,.0f} KG\n\n"
@@ -422,15 +408,15 @@ class PesajeSalidaView(ctk.CTkFrame):
         ):
             return
 
-        resultado = capturar_peso_salida(
-            pesada_id=self._pesada_seleccionada.id,
+        resultado = api_client.capturar_salida(
+            pesada_id=self._pesada_seleccionada["id"],
             peso_capturado=float(peso)
         )
 
         if resultado["exito"]:
             messagebox.showinfo(
                 "Enviado a Centro de Costos ✓",
-                f"Ticket: {self._pesada_seleccionada.numero_ticket}\n"
+                f"Ticket: {self._pesada_seleccionada['numero_ticket']}\n"
                 f"Peso neto: {resultado['peso_neto']:,.0f} KG\n\n"
                 "La pesada fue enviada a Centro de Costos.\n"
                 "Espere la aprobación para completar los datos finales."
@@ -445,14 +431,14 @@ class PesajeSalidaView(ctk.CTkFrame):
             return
 
         motivo = ctk.CTkInputDialog(
-            text=f"Ingrese el motivo de anulación para el ticket {self._pesada_seleccionada.numero_ticket}:",
+            text=f"Ingrese el motivo de anulación para el ticket {self._pesada_seleccionada['numero_ticket']}:",
             title="Anular entrada"
         ).get_input()
 
         if not motivo:
             return
 
-        resultado = anular_pesada(self._pesada_seleccionada.id, motivo)
+        resultado = api_client.anular_pesada(self._pesada_seleccionada["id"], motivo)
         if resultado["exito"]:
             messagebox.showinfo("Anulada", resultado["mensaje"])
             self._cargar_cola()

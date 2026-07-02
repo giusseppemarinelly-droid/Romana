@@ -5,10 +5,30 @@
 import customtkinter as ctk
 from tkinter import messagebox, ttk
 from datetime import datetime, timedelta
-from services.pesaje_service import get_kardex, listar_productos_activos, listar_proveedores_activos
-from services.reporte_service import generar_kardex_pdf, generar_kardex_excel
+from client.api_client import api_client, ApiError
+from services.auth_service import tiene_permiso
 import os
-from config import UI
+from config import UI, REPORTS_DIR
+
+# Mapea la etiqueta legible del combo al valor real de Pesada.estado.
+# (antes de esta migración el combo usaba "Completada"/"Pendiente"/"Anulada"
+# en minúscula, que nunca coincidía con los estados reales del modelo
+# "completado"/"pendiente_aprobacion"/"anulado" — el filtro nunca funcionó)
+ESTADOS = {
+    "Todos": None,
+    "En planta": "en_planta",
+    "Pendiente aprobación": "pendiente_aprobacion",
+    "Aprobada": "aprobado",
+    "Rechazada": "rechazado",
+    "Completada": "completado",
+    "Anulada": "anulado",
+}
+
+
+def _fecha_hora(iso_str):
+    if not iso_str:
+        return "—"
+    return datetime.fromisoformat(iso_str).strftime("%d/%m/%Y %H:%M")
 
 
 class KardexView(ctk.CTkFrame):
@@ -65,8 +85,8 @@ class KardexView(ctk.CTkFrame):
                      text_color=UI["color_text"]).grid(row=1, column=4, padx=(0, 2))
 
         self._combo_estado = ctk.CTkComboBox(
-            filtros, values=["Todos", "Completada", "Pendiente", "Anulada"],
-            width=130, height=32)
+            filtros, values=list(ESTADOS.keys()),
+            width=150, height=32)
         self._combo_estado.grid(row=1, column=5, padx=(0, 10))
         self._combo_estado.set("Todos")
 
@@ -76,15 +96,19 @@ class KardexView(ctk.CTkFrame):
             height=32, width=100, fg_color=UI["color_accent"], hover_color=UI["color_accent_hover"]
         ).grid(row=1, column=6, padx=(0, 5))
 
-        ctk.CTkButton(
-            filtros, text="PDF", command=self._exportar_pdf,
-            height=32, width=70, fg_color=UI["color_danger"], hover_color=UI["color_danger_hover"]
-        ).grid(row=1, column=7, padx=(0, 5))
+        # Exportar (PDF/Excel) requiere "reportes_exportar" (niveles 1-2) —
+        # el backend ya lo exige; acá se oculta el botón en vez de dejar
+        # que el operador se tope con un error 403 al hacer clic.
+        if tiene_permiso("reportes_exportar"):
+            ctk.CTkButton(
+                filtros, text="PDF", command=self._exportar_pdf,
+                height=32, width=70, fg_color=UI["color_danger"], hover_color=UI["color_danger_hover"]
+            ).grid(row=1, column=7, padx=(0, 5))
 
-        ctk.CTkButton(
-            filtros, text="Excel", command=self._exportar_excel,
-            height=32, width=80, fg_color=UI["color_success"], hover_color=UI["color_success_hover"]
-        ).grid(row=1, column=8, padx=(0, 15), pady=10)
+            ctk.CTkButton(
+                filtros, text="Excel", command=self._exportar_excel,
+                height=32, width=80, fg_color=UI["color_success"], hover_color=UI["color_success_hover"]
+            ).grid(row=1, column=8, padx=(0, 15), pady=10)
 
         # ---- Tabla de resultados ----
         tabla_frame = ctk.CTkFrame(
@@ -182,14 +206,22 @@ class KardexView(ctk.CTkFrame):
             messagebox.showerror("Error", "Formato de fecha incorrecto. Use dd/mm/aaaa")
             return
 
-        estado_val = self._combo_estado.get()
-        estado = None if estado_val == "Todos" else estado_val.lower()
+        estado = ESTADOS.get(self._combo_estado.get())
 
-        self._pesadas = get_kardex(
-            fecha_inicio=fecha_inicio,
-            fecha_fin=fecha_fin,
-            estado=estado
-        )
+        # Se guardan los filtros tal cual se los pasamos a la API para
+        # poder reusarlos en _exportar_pdf/_exportar_excel sin duplicar
+        # el parseo de fechas.
+        self._filtros_actuales = {
+            "fecha_inicio": fecha_inicio.isoformat() if fecha_inicio else None,
+            "fecha_fin": fecha_fin.isoformat() if fecha_fin else None,
+            "estado": estado,
+        }
+
+        try:
+            self._pesadas = api_client.get_kardex(**self._filtros_actuales)
+        except ApiError as e:
+            messagebox.showerror("Error de conexión", str(e))
+            self._pesadas = []
 
         # Limpiar tabla
         for item in self._tree.get_children():
@@ -198,20 +230,20 @@ class KardexView(ctk.CTkFrame):
         # Poblar tabla
         total_neto = 0.0
         for i, p in enumerate(self._pesadas):
-            neto = float(p.peso_neto or 0)
+            neto = float(p["peso_neto"] or 0)
             total_neto += neto
 
             tag = "par" if i % 2 == 0 else "impar"
             self._tree.insert("", "end", values=(
-                p.numero_ticket,
-                p.fecha_entrada.strftime("%d/%m/%Y %H:%M") if p.fecha_entrada else "—",
-                p.vehiculo.placa if p.vehiculo else "—",
-                (p.conductor.nombre[:15] if p.conductor else "—"),
-                (p.producto.nombre[:15] if p.producto else "—"),
-                f"{float(p.peso_bruto or 0):,.0f}",
-                f"{float(p.peso_tara or 0):,.0f}",
+                p["numero_ticket"],
+                _fecha_hora(p["fecha_entrada"]),
+                p["vehiculo"]["placa"] if p["vehiculo"] else "—",
+                (p["conductor"]["nombre"][:15] if p["conductor"] else "—"),
+                (p["producto"]["nombre"][:15] if p["producto"] else "—"),
+                f"{float(p['peso_bruto'] or 0):,.0f}",
+                f"{float(p['peso_tara'] or 0):,.0f}",
                 f"{neto:,.0f}",
-                p.estado.upper()
+                p["estado"].upper()
             ), tags=(tag,))
 
         self._tree.tag_configure("par",  background=UI["color_card"])
@@ -220,16 +252,24 @@ class KardexView(ctk.CTkFrame):
         self._lbl_count.configure(text=f"{len(self._pesadas)} registros")
         self._lbl_total.configure(text=f"Total Neto: {total_neto:,.2f} KG")
 
+    def _guardar_y_abrir(self, contenido: bytes, nombre: str) -> str:
+        os.makedirs(REPORTS_DIR, exist_ok=True)
+        ruta = os.path.join(REPORTS_DIR, nombre)
+        with open(ruta, "wb") as f:
+            f.write(contenido)
+        return ruta
+
     def _exportar_pdf(self):
         if not self._pesadas:
             messagebox.showwarning("Sin datos", "No hay datos para exportar")
             return
         try:
-            ruta = generar_kardex_pdf(self._pesadas)
+            contenido = api_client.descargar_kardex_pdf(**self._filtros_actuales)
+            ruta = self._guardar_y_abrir(contenido, f"KARDEX_{datetime.now():%Y%m%d_%H%M%S}.pdf")
             if messagebox.askyesno("PDF Generado",
                     f"PDF generado exitosamente.\n\n¿Abrir el archivo?"):
                 os.startfile(ruta)
-        except Exception as e:
+        except (ApiError, OSError) as e:
             messagebox.showerror("Error", f"Error al generar PDF: {e}")
 
     def _exportar_excel(self):
@@ -237,9 +277,10 @@ class KardexView(ctk.CTkFrame):
             messagebox.showwarning("Sin datos", "No hay datos para exportar")
             return
         try:
-            ruta = generar_kardex_excel(self._pesadas)
+            contenido = api_client.descargar_kardex_excel(**self._filtros_actuales)
+            ruta = self._guardar_y_abrir(contenido, f"KARDEX_{datetime.now():%Y%m%d_%H%M%S}.xlsx")
             if messagebox.askyesno("Excel Generado",
                     f"Excel generado exitosamente.\n\n¿Abrir el archivo?"):
                 os.startfile(ruta)
-        except Exception as e:
+        except (ApiError, OSError) as e:
             messagebox.showerror("Error", f"Error al generar Excel: {e}")

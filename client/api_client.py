@@ -112,17 +112,61 @@ class ApiClient:
     # ------------------------------------------------------------
     # Dominio: pesadas (mapea 1:1 backend/routers/pesadas.py)
     # ------------------------------------------------------------
+    def listar_pesadas_en_planta(self) -> list:
+        return self.get("/api/v1/pesadas/en-planta")
+
     def listar_pendientes_aprobacion(self) -> list:
         return self.get("/api/v1/pesadas/pendientes-aprobacion")
 
+    def listar_aprobadas_pendientes(self) -> list:
+        return self.get("/api/v1/pesadas/aprobadas-pendientes")
+
+    def listar_pesadas_completadas(self, limit: int = 100) -> list:
+        return self.get("/api/v1/pesadas/completadas", params={"limit": limit})
+
+    def get_kardex(self, **params) -> list:
+        return self.get("/api/v1/pesadas/kardex/buscar", params={k: v for k, v in params.items() if v is not None})
+
     def obtener_pesada(self, pesada_id: int) -> dict:
         return self.get(f"/api/v1/pesadas/{pesada_id}")
+
+    def registrar_entrada(self, **kwargs) -> dict:
+        resultado = self._con_pesada(self.post("/api/v1/pesadas/entrada", json=kwargs))
+        if resultado["exito"]:
+            resultado["ticket"] = resultado["pesada"]["numero_ticket"]
+        return resultado
+
+    def capturar_salida(self, pesada_id: int, peso_capturado: float) -> dict:
+        resultado = self._con_pesada(self.post(f"/api/v1/pesadas/{pesada_id}/salida", json={"peso_capturado": peso_capturado}))
+        if resultado["exito"]:
+            resultado["peso_neto"] = resultado["pesada"]["peso_neto"]
+        return resultado
 
     def aprobar_pesada(self, pesada_id: int) -> dict:
         return self._con_pesada(self.post(f"/api/v1/pesadas/{pesada_id}/aprobar"))
 
     def rechazar_pesada(self, pesada_id: int, motivo: str) -> dict:
         return self._con_pesada(self.post(f"/api/v1/pesadas/{pesada_id}/rechazar", json={"motivo": motivo}))
+
+    def completar_pesaje(self, pesada_id: int, **kwargs) -> dict:
+        return self._con_pesada(self.post(f"/api/v1/pesadas/{pesada_id}/completar", json=kwargs))
+
+    def anular_pesada(self, pesada_id: int, motivo: str) -> dict:
+        resultado = self.post(f"/api/v1/pesadas/{pesada_id}/anular", json={"motivo": motivo})
+        if resultado["exito"]:
+            resultado["mensaje"] = resultado.pop("data")["mensaje"]
+        return resultado
+
+    def listar_cortes(self, limit: int = 20) -> list:
+        return self.get("/api/v1/pesadas/cortes", params={"limit": limit})
+
+    def realizar_corte(self, observaciones: str = "") -> dict:
+        resultado = self.post("/api/v1/pesadas/cortes", json={"observaciones": observaciones})
+        if resultado["exito"]:
+            corte = resultado.pop("data")
+            resultado.update(corte)
+            resultado["mensaje"] = f"Corte #{corte['numero_corte']} realizado"
+        return resultado
 
     @staticmethod
     def _con_pesada(resultado: dict) -> dict:
@@ -157,6 +201,36 @@ class ApiClient:
 
     def desactivar_maestro(self, recurso: str, item_id: int, activo: bool = False) -> dict:
         return self._mutar("PATCH", f"/api/v1/{recurso}/{item_id}/activo", {"activo": activo})
+
+    def autoregistrar_vehiculo(self, datos: dict) -> dict:
+        """Registro rápido de un vehículo no catalogado al pesar — permiso
+        'pesaje_entrada' (niveles 1-3), a diferencia de crear_maestro
+        ('maestros_crear', solo 1-2)."""
+        return self._mutar("POST", "/api/v1/vehiculos/autoregistro", datos)
+
+    # ------------------------------------------------------------
+    # Dominio: reportes (mapea 1:1 backend/routers/reportes.py)
+    # ------------------------------------------------------------
+    # El PDF/Excel se genera en el servidor (Romana y Centro de Costos
+    # no comparten disco) y se descarga como bytes — el llamador decide
+    # dónde guardarlo localmente antes de abrirlo.
+    def _descargar(self, path: str, params: Optional[dict] = None) -> bytes:
+        try:
+            r = self._client.get(path, params=params, headers=self._headers())
+        except httpx.RequestError as e:
+            raise ApiError(f"No se pudo conectar al servidor: {e}")
+        if r.status_code >= 400:
+            raise ApiError(self._detalle(r))
+        return r.content
+
+    def descargar_ticket_pdf(self, pesada_id: int) -> bytes:
+        return self._descargar(f"/api/v1/reportes/ticket/{pesada_id}.pdf")
+
+    def descargar_kardex_pdf(self, **filtros) -> bytes:
+        return self._descargar("/api/v1/reportes/kardex.pdf", params={k: v for k, v in filtros.items() if v is not None})
+
+    def descargar_kardex_excel(self, **filtros) -> bytes:
+        return self._descargar("/api/v1/reportes/kardex.xlsx", params={k: v for k, v in filtros.items() if v is not None})
 
 
 class ApiError(Exception):
