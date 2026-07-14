@@ -10,7 +10,7 @@ from starlette.concurrency import run_in_threadpool
 from backend.deps import get_current_user, requiere_permiso
 from backend.schemas.pesada import (
     PesadaOut, EntradaIn, SalidaIn, RechazoIn, CompletarIn, AnularIn,
-    CorteIn, CorteOut,
+    CorteIn, CorteOut, EstadisticasOut,
 )
 from backend.ws.manager import manager
 from database.engine import SessionLocal
@@ -118,6 +118,11 @@ async def listar_aprobadas_pendientes():
 @router.get("/completadas", response_model=list[PesadaOut])
 async def listar_completadas(limit: int = 100):
     return await run_in_threadpool(pesaje_service.listar_pesadas_completadas, limit)
+
+
+@router.get("/estadisticas", response_model=EstadisticasOut)
+async def estadisticas():
+    return await run_in_threadpool(pesaje_service.obtener_estadisticas_dashboard)
 
 
 @router.get("/kardex/buscar", response_model=list[PesadaOut])

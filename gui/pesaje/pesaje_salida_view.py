@@ -8,6 +8,7 @@ from datetime import datetime
 from config import UI
 from client.api_client import api_client, ApiError
 from hardware.display_manager import leer_peso_actual, es_peso_estable
+from gui.async_utils import cargar_en_hilo
 
 
 def _hora(iso_str):
@@ -32,8 +33,20 @@ class PesajeSalidaView(ctk.CTkFrame):
         super().__init__(parent, fg_color="transparent")
         self.callback_navegar = callback_navegar
         self._pesada_seleccionada = None
+        self._after_id_peso_live = None
         self._construir()
         self._cargar_cola()
+
+    def destroy(self):
+        # _actualizar_peso_live() se reprograma solo con self.after()
+        # cada 2s mientras hay un camión seleccionado -- sin cancelarlo
+        # acá, al navegar a otra pantalla el timer sigue vivo leyendo la
+        # báscula cada 2s contra widgets ya destruidos (ver mismo fix en
+        # pesaje_entrada_view.py).
+        if self._after_id_peso_live is not None:
+            self.after_cancel(self._after_id_peso_live)
+            self._after_id_peso_live = None
+        super().destroy()
 
     # ----------------------------------------------------------
     def _construir(self):
@@ -57,7 +70,7 @@ class PesajeSalidaView(ctk.CTkFrame):
 
         # Header
         ctk.CTkLabel(
-            frame, text="⬆  CAMIONES EN PLANTA",
+            frame, text="↑  CAMIONES EN PLANTA",
             font=ctk.CTkFont(family=UI["fuente"], size=14, weight="bold"),
             text_color=UI["color_accent"]
         ).grid(row=0, column=0, padx=16, pady=(16, 4), sticky="w")
@@ -171,16 +184,19 @@ class PesajeSalidaView(ctk.CTkFrame):
         for item in self._tree.get_children():
             self._tree.delete(item)
 
-        try:
+        def _fetch():
             pesadas = api_client.listar_pesadas_en_planta()
             # También mostrar rechazados (CC rechazó, Romana debe recapturar)
             rechazadas = api_client.get_kardex(estado="rechazado")
-        except ApiError as e:
-            messagebox.showerror("Error de conexión", str(e))
-            pesadas, rechazadas = [], []
+            return pesadas + rechazadas
 
-        todos = pesadas + rechazadas
+        cargar_en_hilo(
+            self, _fetch,
+            on_exito=self._on_cola_cargada,
+            on_error=lambda e: messagebox.showerror("Error de conexión", str(e)),
+        )
 
+    def _on_cola_cargada(self, todos):
         for p in todos:
             prod_nombre = p["producto"]["nombre"][:14] if p["producto"] else "—"
             tipo = "General" if p["tipo_pesaje"] == "GENERAL" else "Prod. Term."
@@ -220,6 +236,13 @@ class PesajeSalidaView(ctk.CTkFrame):
     # ----------------------------------------------------------
     def _mostrar_detalle(self, p):
         """Muestra el panel de captura para el camión seleccionado."""
+        # Si ya había un timer de peso en vivo de una selección anterior,
+        # cancelarlo -- si no, cada camión seleccionado en la sesión deja
+        # su propio timer corriendo de fondo además del nuevo.
+        if self._after_id_peso_live is not None:
+            self.after_cancel(self._after_id_peso_live)
+            self._after_id_peso_live = None
+
         self._lbl_sin_sel.grid_forget()
         self._detalle_frame.grid(row=0, column=0, sticky="nsew", padx=16, pady=16)
         self._detalle_frame.grid_columnconfigure(0, weight=1)
@@ -375,7 +398,7 @@ class PesajeSalidaView(ctk.CTkFrame):
         except Exception:
             pass
 
-        self.after(2000, self._actualizar_peso_live)
+        self._after_id_peso_live = self.after(2000, self._actualizar_peso_live)
 
     # ----------------------------------------------------------
     def _capturar_peso(self):

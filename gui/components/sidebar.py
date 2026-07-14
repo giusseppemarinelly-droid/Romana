@@ -16,8 +16,8 @@ class Sidebar(ctk.CTkFrame):
     MENU_ITEMS = [
         # --- Sección pesaje (Romana) ---
         ("separator", "PESAJE", None),
-        ("Entrada",          "pesaje_entrada",    "pesaje_entrada",  "⬇"),
-        ("Salida / Capturar","pesaje_salida",     "pesaje_salida",   "⬆"),
+        ("Entrada",          "pesaje_entrada",    "pesaje_entrada",  "↓"),
+        ("Salida / Capturar","pesaje_salida",     "pesaje_salida",   "↑"),
         ("Completar Pesaje", "completar_pesaje",  "pesaje_completar","✔"),
         ("Kardex",           "kardex",            "reportes_ver",    "≡"),
         ("Corte",            "corte",             "corte_pesadas",   "✂"),

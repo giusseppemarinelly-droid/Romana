@@ -8,6 +8,7 @@ from datetime import datetime, timedelta
 from client.api_client import api_client, ApiError
 import os
 from config import UI, REPORTS_DIR
+from gui.async_utils import cargar_en_hilo
 
 # Mapea la etiqueta legible del combo al valor real de Pesada.estado.
 # (antes de esta migración el combo usaba "Completada"/"Pendiente"/"Anulada"
@@ -216,11 +217,14 @@ class KardexView(ctk.CTkFrame):
             "estado": estado,
         }
 
-        try:
-            self._pesadas = api_client.get_kardex(**self._filtros_actuales)
-        except ApiError as e:
-            messagebox.showerror("Error de conexión", str(e))
-            self._pesadas = []
+        cargar_en_hilo(
+            self, lambda: api_client.get_kardex(**self._filtros_actuales),
+            on_exito=self._poblar_resultados,
+            on_error=lambda e: messagebox.showerror("Error de conexión", str(e)),
+        )
+
+    def _poblar_resultados(self, pesadas):
+        self._pesadas = pesadas
 
         # Limpiar tabla
         for item in self._tree.get_children():

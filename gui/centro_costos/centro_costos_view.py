@@ -10,6 +10,7 @@ from tkinter import messagebox, ttk
 from config import UI
 from client.api_client import api_client, ApiError
 from client.ws_client import WsClient
+from gui.async_utils import cargar_en_hilo
 
 
 class CentroCostosView(ctk.CTkFrame):
@@ -179,12 +180,13 @@ class CentroCostosView(ctk.CTkFrame):
         for item in self._tree.get_children():
             self._tree.delete(item)
 
-        try:
-            pesadas = api_client.listar_pendientes_aprobacion()
-        except ApiError as e:
-            messagebox.showerror("Error de conexión", str(e))
-            pesadas = []
+        cargar_en_hilo(
+            self, api_client.listar_pendientes_aprobacion,
+            on_exito=self._poblar_cola,
+            on_error=lambda e: messagebox.showerror("Error de conexión", str(e)),
+        )
 
+    def _poblar_cola(self, pesadas):
         for p in pesadas:
             tipo = "General" if p["tipo_pesaje"] == "GENERAL" else "Prod. Term."
             empresa = (p["empresa_cliente_proveedor"] or

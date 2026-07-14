@@ -90,6 +90,10 @@ UI = {
     # Bordes
     "color_border":       "#e2e8f0",   # Borde sutil (slate-200)
 
+    # Campos de entrada (entries, comboboxes) — fondo levemente
+    # distinto de las tarjetas para que se noten como "editables"
+    "color_input_bg":      "#f8fafc",  # Slate-50
+
     # Estados
     "color_success":       "#059669",  # Verde para completados (emerald-600)
     "color_success_hover": "#047857",

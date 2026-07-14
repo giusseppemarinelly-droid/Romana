@@ -8,6 +8,7 @@ import customtkinter as ctk
 from tkinter import messagebox, ttk
 from client.api_client import api_client, ApiError
 from config import UI
+from gui.async_utils import cargar_en_hilo
 
 _DEBOUNCE_MS = 300  # espera tras la última tecla antes de buscar en el servidor
 
@@ -129,21 +130,18 @@ class VehiculosView(ctk.CTkFrame):
             ["camion", "tractocamion", "volqueta", "cisterna", "otro"]
         )
 
-        # Proveedor
+        # Proveedor -- el combo arranca con un solo valor y se completa
+        # cuando llega la lista real (_cargar_proveedores), en vez de
+        # bloquear la construcción de la pantalla esperando al backend.
         ctk.CTkLabel(right, text="Proveedor", font=ctk.CTkFont(size=11),
                      text_color=UI["color_muted"], anchor="w").pack(fill="x", padx=18, pady=(0, 2))
-        try:
-            provs = api_client.listar_maestro("proveedores")
-        except ApiError as e:
-            messagebox.showerror("Error de conexión", str(e))
-            provs = []
-        prov_nombres = ["-- Sin proveedor --"] + [f"{p['codigo']} — {p['nombre']}" for p in provs]
-        self._proveedores_lista = provs
+        self._proveedores_lista = []
 
         self._f_proveedor = ctk.CTkComboBox(
-            right, values=prov_nombres, height=35, font=ctk.CTkFont(size=12))
+            right, values=["-- Sin proveedor --"], height=35, font=ctk.CTkFont(size=12))
         self._f_proveedor.pack(fill="x", padx=18, pady=(0, 12))
         self._f_proveedor.set("-- Sin proveedor --")
+        self._cargar_proveedores()
 
         # Botones
         btn_frame = ctk.CTkFrame(right, fg_color="transparent")
@@ -191,14 +189,25 @@ class VehiculosView(ctk.CTkFrame):
         combo.set(valores[0])
         return combo
 
+    def _cargar_proveedores(self):
+        cargar_en_hilo(
+            self, lambda: api_client.listar_maestro("proveedores"),
+            on_exito=self._on_proveedores_cargados,
+            on_error=lambda e: messagebox.showerror("Error de conexión", str(e)),
+        )
+
+    def _on_proveedores_cargados(self, provs):
+        self._proveedores_lista = provs
+        prov_nombres = ["-- Sin proveedor --"] + [f"{p['codigo']} — {p['nombre']}" for p in provs]
+        self._f_proveedor.configure(values=prov_nombres)
+
     def _cargar_datos(self):
         """Carga los vehículos en la tabla (búsqueda vacía = todos los activos)."""
-        try:
-            vehiculos = api_client.listar_maestro("vehiculos")
-        except ApiError as e:
-            messagebox.showerror("Error de conexión", str(e))
-            vehiculos = []
-        self._poblar_tabla(vehiculos)
+        cargar_en_hilo(
+            self, lambda: api_client.listar_maestro("vehiculos"),
+            on_exito=self._poblar_tabla,
+            on_error=lambda e: messagebox.showerror("Error de conexión", str(e)),
+        )
 
     def _poblar_tabla(self, vehiculos):
         for item in self._tree.get_children():
@@ -222,12 +231,11 @@ class VehiculosView(ctk.CTkFrame):
     def _filtrar(self):
         """Búsqueda indexada en el servidor (ILIKE sobre placa/descripción)."""
         termino = self._entry_buscar.get().strip()
-        try:
-            vehiculos = api_client.listar_maestro("vehiculos", search=termino or None)
-        except ApiError as e:
-            messagebox.showerror("Error de conexión", str(e))
-            vehiculos = []
-        self._poblar_tabla(vehiculos)
+        cargar_en_hilo(
+            self, lambda: api_client.listar_maestro("vehiculos", search=termino or None),
+            on_exito=self._poblar_tabla,
+            on_error=lambda e: messagebox.showerror("Error de conexión", str(e)),
+        )
 
     def _on_select(self, event):
         """Al seleccionar un vehículo en la tabla, carga sus datos en el formulario."""

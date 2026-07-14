@@ -30,7 +30,7 @@ pip install -r requirements.txt
 
 ## Arranque
 
-Este sistema corre en **dos procesos separados**, tipicamente en dos maquinas distintas:
+Este sistema corre en **dos procesos separados**, tipicamente en dos maquinas distintas. Para pruebas en una sola maquina (por ejemplo, antes de instalar en la planta), no hace falta levantar los dos a mano: si `API_BASE_URL` apunta a `localhost` y el backend no esta corriendo, `python main.py` lo arranca solo como subproceso (y lo cierra al cerrar la GUI). En las estaciones reales de la red (`ROMANA_API_URL` apuntando a otra maquina) este auto-arranque no aplica -- ahi el backend se levanta aparte, en la maquina "servidor", con el paso 1 de abajo.
 
 **1. Backend (una sola vez, en la maquina "servidor" de la red interna):**
 

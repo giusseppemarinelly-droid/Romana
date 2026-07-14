@@ -3,6 +3,7 @@ import customtkinter as ctk
 from tkinter import messagebox, ttk
 from client.api_client import api_client, ApiError
 from config import UI
+from gui.async_utils import cargar_en_hilo
 
 _DEBOUNCE_MS = 300
 
@@ -97,12 +98,11 @@ class DestinosView(ctk.CTkFrame):
         return entry
 
     def _cargar_datos(self):
-        try:
-            datos = api_client.listar_maestro("destinos")
-        except ApiError as e:
-            messagebox.showerror("Error de conexión", str(e))
-            datos = []
-        self._poblar_tabla(datos)
+        cargar_en_hilo(
+            self, lambda: api_client.listar_maestro("destinos"),
+            on_exito=self._poblar_tabla,
+            on_error=lambda e: messagebox.showerror("Error de conexión", str(e)),
+        )
 
     def _poblar_tabla(self, items):
         for item in self._tree.get_children(): self._tree.delete(item)
@@ -116,12 +116,11 @@ class DestinosView(ctk.CTkFrame):
 
     def _filtrar(self):
         termino = self._entry_buscar.get().strip()
-        try:
-            datos = api_client.listar_maestro("destinos", search=termino or None)
-        except ApiError as e:
-            messagebox.showerror("Error de conexión", str(e))
-            datos = []
-        self._poblar_tabla(datos)
+        cargar_en_hilo(
+            self, lambda: api_client.listar_maestro("destinos", search=termino or None),
+            on_exito=self._poblar_tabla,
+            on_error=lambda e: messagebox.showerror("Error de conexión", str(e)),
+        )
 
     def _on_select(self, event):
         sel = self._tree.selection()

@@ -6,6 +6,7 @@ import customtkinter as ctk
 from tkinter import messagebox
 from client.api_client import api_client, ApiError
 from config import EMPRESA, UI
+from gui.async_utils import cargar_en_hilo
 
 
 class ConfiguracionView(ctk.CTkFrame):
@@ -51,7 +52,7 @@ class ConfiguracionView(ctk.CTkFrame):
         self._agregar_campos(scroll, params_num, row_start=1, col=1)
 
         # ---- Sección: Báscula ----
-        self._seccion(scroll, "⚖️ Báscula", row=6, col=0)
+        self._seccion(scroll, "⚖ Báscula", row=6, col=0)
         params_bascula = [
             ("unidad_peso",   "Unidad de peso (KG, TN, LB)"),
             ("capacidad_max", "Capacidad máxima (KG)"),
@@ -59,7 +60,7 @@ class ConfiguracionView(ctk.CTkFrame):
         self._agregar_campos(scroll, params_bascula, row_start=7, col=0)
 
         # ---- Sección: Display ----
-        self._seccion(scroll, "🖥️ Display de Pesaje", row=6, col=1)
+        self._seccion(scroll, "🖥 Display de Pesaje", row=6, col=1)
         params_display = [
             ("puerto_com", "Puerto COM (ej: COM1)"),
             ("baudrate",   "Baudrate (ej: 9600)"),
@@ -112,11 +113,13 @@ class ConfiguracionView(ctk.CTkFrame):
 
     def _cargar_datos(self):
         """Carga los valores actuales desde el servidor."""
-        try:
-            configuraciones = {c["clave"]: c["valor"] for c in api_client.listar_configuracion()}
-        except ApiError as e:
-            messagebox.showerror("Error de conexión", str(e))
-            configuraciones = {}
+        cargar_en_hilo(
+            self, api_client.listar_configuracion,
+            on_exito=lambda lista: self._poblar_campos({c["clave"]: c["valor"] for c in lista}),
+            on_error=lambda e: messagebox.showerror("Error de conexión", str(e)),
+        )
+
+    def _poblar_campos(self, configuraciones):
         for clave, entry in self._campos.items():
             entry.delete(0, "end")
             entry.insert(0, configuraciones.get(clave) or "")

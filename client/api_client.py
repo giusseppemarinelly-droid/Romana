@@ -143,6 +143,9 @@ class ApiClient:
     def listar_pesadas_completadas(self, limit: int = 100) -> list:
         return self.get("/api/v1/pesadas/completadas", params={"limit": limit})
 
+    def obtener_estadisticas(self) -> dict:
+        return self.get("/api/v1/pesadas/estadisticas")
+
     def get_kardex(self, **params) -> list:
         return self.get("/api/v1/pesadas/kardex/buscar", params={k: v for k, v in params.items() if v is not None})
 

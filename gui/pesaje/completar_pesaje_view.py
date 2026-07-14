@@ -9,6 +9,7 @@ from tkinter import messagebox, ttk
 from datetime import datetime
 from config import UI, REPORTS_DIR
 from client.api_client import api_client, ApiError
+from gui.async_utils import cargar_en_hilo
 import os
 
 
@@ -162,12 +163,13 @@ class CompletarPesajeView(ctk.CTkFrame):
         for item in self._tree.get_children():
             self._tree.delete(item)
 
-        try:
-            pesadas = api_client.listar_aprobadas_pendientes()
-        except ApiError as e:
-            messagebox.showerror("Error de conexión", str(e))
-            pesadas = []
+        cargar_en_hilo(
+            self, api_client.listar_aprobadas_pendientes,
+            on_exito=self._poblar_lista,
+            on_error=lambda e: messagebox.showerror("Error de conexión", str(e)),
+        )
 
+    def _poblar_lista(self, pesadas):
         for p in pesadas:
             aprobado_por = (p["aprobado_por"]["nombre_completo"][:16]
                             if p["aprobado_por"] else "CC")

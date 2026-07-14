@@ -3,9 +3,10 @@
 # ============================================================
 
 import customtkinter as ctk
-from client.api_client import api_client, ApiError
+from client.api_client import api_client
 from datetime import datetime
 from config import UI
+from gui.async_utils import cargar_en_hilo
 
 
 def _hora(iso_str):
@@ -58,28 +59,21 @@ class DashboardView(ctk.CTkFrame):
         ).pack(anchor="w", pady=(2, 0))
 
         # ---- Tarjetas de métricas ----
+        # Se arman con "…" como placeholder y se completan cuando llegan
+        # los datos (_on_datos_cargados) -- ver nota más abajo sobre por
+        # qué la carga es asíncrona.
         metrics_frame = ctk.CTkFrame(self, fg_color="transparent")
         metrics_frame.grid(row=1, column=0, sticky="ew", padx=25, pady=15)
 
-        # Obtener datos
-        try:
-            pendientes = api_client.listar_pesadas_en_planta()
-            completadas = api_client.listar_pesadas_completadas(limit=500)
-        except ApiError:
-            pendientes, completadas = [], []
-        hoy = datetime.now().date()
-        completadas_hoy = [p for p in completadas
-                           if p["fecha_salida"] and datetime.fromisoformat(p["fecha_salida"]).date() == hoy]
-        total_neto_hoy = sum(float(p["peso_neto"] or 0) for p in completadas_hoy)
-
-        metricas = [
-            ("🚛", "Camiones en Planta", str(len(pendientes)),       UI["color_warning"],       "pesaje_salida"),
-            ("✅", "Pesadas Hoy",         str(len(completadas_hoy)), UI["color_accent"],         "kardex"),
-            ("⚖️",  "Neto Hoy (KG)",      f"{total_neto_hoy:,.0f}", UI["color_success"],        "kardex"),
-            ("📋", "Total Completadas",   str(len(completadas)),     UI["color_accent_hover"],   "kardex"),
+        metricas_def = [
+            ("🚛", "Camiones en Planta", UI["color_warning"]),
+            ("✅", "Pesadas Hoy",         UI["color_accent"]),
+            ("⚖",  "Neto Hoy (KG)",      UI["color_success"]),
+            ("📋", "Total Completadas",   UI["color_accent_hover"]),
         ]
 
-        for i, (icono, titulo, valor, color, destino) in enumerate(metricas):
+        self._lbls_metricas = []
+        for i, (icono, titulo, color) in enumerate(metricas_def):
             card = ctk.CTkFrame(
                 metrics_frame,
                 fg_color=UI["color_card"],
@@ -95,11 +89,13 @@ class DashboardView(ctk.CTkFrame):
                 font=ctk.CTkFont(size=28)
             ).pack(anchor="w", padx=18, pady=(15, 0))
 
-            ctk.CTkLabel(
-                card, text=valor,
+            lbl_valor = ctk.CTkLabel(
+                card, text="…",
                 font=ctk.CTkFont(size=26, weight="bold"),
                 text_color=color
-            ).pack(anchor="w", padx=18)
+            )
+            lbl_valor.pack(anchor="w", padx=18)
+            self._lbls_metricas.append(lbl_valor)
 
             ctk.CTkLabel(
                 card, text=titulo,
@@ -108,17 +104,63 @@ class DashboardView(ctk.CTkFrame):
             ).pack(anchor="w", padx=18, pady=(0, 15))
 
         # ---- Accesos rápidos + Lista de pendientes ----
-        lower_frame = ctk.CTkFrame(self, fg_color="transparent")
-        lower_frame.grid(row=2, column=0, sticky="nsew", padx=25, pady=0)
-        lower_frame.grid_columnconfigure(0, weight=2)
-        lower_frame.grid_columnconfigure(1, weight=3)
-        lower_frame.grid_rowconfigure(0, weight=1)
+        self._lower_frame = ctk.CTkFrame(self, fg_color="transparent")
+        self._lower_frame.grid(row=2, column=0, sticky="nsew", padx=25, pady=0)
+        self._lower_frame.grid_columnconfigure(0, weight=2)
+        self._lower_frame.grid_columnconfigure(1, weight=3)
+        self._lower_frame.grid_rowconfigure(0, weight=1)
 
-        # --- Accesos rápidos ---
-        self._construir_accesos_rapidos(lower_frame)
+        # --- Accesos rápidos --- (no depende de datos del backend)
+        self._construir_accesos_rapidos(self._lower_frame)
 
-        # --- Lista de pendientes ---
-        self._construir_lista_pendientes(lower_frame, pendientes)
+        # --- Lista de pendientes --- placeholder mientras carga
+        self._lista_placeholder = ctk.CTkFrame(
+            self._lower_frame, fg_color=UI["color_card"],
+            border_color=UI["color_border"], border_width=1, corner_radius=12
+        )
+        self._lista_placeholder.grid(row=0, column=1, sticky="nsew", pady=10)
+        ctk.CTkLabel(
+            self._lista_placeholder, text="Cargando…",
+            font=ctk.CTkFont(size=13), text_color=UI["color_muted"]
+        ).pack(expand=True, pady=40)
+
+        self._cargar_datos()
+
+    def _cargar_datos(self):
+        # Las métricas (completadas hoy, neto hoy, total completadas) se
+        # piden ya agregadas al backend en vez de bajar cientos de
+        # pesadas completas solo para contarlas -- ver
+        # api_client.obtener_estadisticas() / pesaje_service.obtener_estadisticas_dashboard().
+        # Ambas llamadas corren en un hilo de fondo (gui/async_utils.py):
+        # el dashboard es la primera pantalla tras el login y la que más
+        # se revisita -- si el backend tarda (red, antivirus, etc.) no
+        # debe congelar la ventana.
+        def _fetch():
+            pendientes = api_client.listar_pesadas_en_planta()
+            stats = api_client.obtener_estadisticas()
+            return pendientes, stats
+
+        cargar_en_hilo(
+            self, _fetch,
+            on_exito=self._on_datos_cargados,
+            on_error=lambda e: self._on_datos_cargados(([], {
+                "completadas_hoy": 0, "neto_hoy_kg": 0, "total_completadas": 0,
+            })),
+        )
+
+    def _on_datos_cargados(self, resultado):
+        pendientes, stats = resultado
+        valores = [
+            str(len(pendientes)),
+            str(stats["completadas_hoy"]),
+            f"{stats['neto_hoy_kg']:,.0f}",
+            str(stats["total_completadas"]),
+        ]
+        for lbl, valor in zip(self._lbls_metricas, valores):
+            lbl.configure(text=valor)
+
+        self._lista_placeholder.destroy()
+        self._construir_lista_pendientes(self._lower_frame, pendientes)
 
     def _construir_accesos_rapidos(self, parent):
         """Botones grandes de acceso rápido."""
@@ -139,8 +181,8 @@ class DashboardView(ctk.CTkFrame):
 
         # Definición de accesos: (texto, destino, es_primario, permiso)
         accesos = [
-            ("⬇  Registrar Entrada", "pesaje_entrada", True,  "pesaje_entrada"),
-            ("⬆  Registrar Salida",  "pesaje_salida",  True,  "pesaje_salida"),
+            ("↓  Registrar Entrada", "pesaje_entrada", True,  "pesaje_entrada"),
+            ("↑  Registrar Salida",  "pesaje_salida",  True,  "pesaje_salida"),
             ("≡  Ver Kardex",         "kardex",         False, "reportes_ver"),
             ("✂  Realizar Corte",    "corte",          False, "corte_pesadas"),
             ("🚛  Gestionar Vehículos","vehiculos",     False, "maestros_ver"),

@@ -7,6 +7,7 @@ from tkinter import messagebox, ttk
 from datetime import datetime
 from client.api_client import api_client, ApiError
 from config import UI
+from gui.async_utils import cargar_en_hilo
 
 
 def _fecha_hora(iso_str):
@@ -184,11 +185,13 @@ class UsuariosView(ctk.CTkFrame):
         ).pack(fill="x")
 
     def _cargar_datos(self):
-        try:
-            usuarios = api_client.listar_usuarios()
-        except ApiError as e:
-            messagebox.showerror("Error de conexión", str(e))
-            usuarios = []
+        cargar_en_hilo(
+            self, api_client.listar_usuarios,
+            on_exito=self._poblar_tabla,
+            on_error=lambda e: messagebox.showerror("Error de conexión", str(e)),
+        )
+
+    def _poblar_tabla(self, usuarios):
         for item in self._tree.get_children():
             self._tree.delete(item)
 

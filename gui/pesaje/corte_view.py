@@ -7,6 +7,7 @@ from tkinter import messagebox
 from datetime import datetime
 from client.api_client import api_client, ApiError
 from config import UI
+from gui.async_utils import cargar_en_hilo
 
 
 def _fecha_hora(iso_str):
@@ -38,7 +39,7 @@ class CorteView(ctk.CTkFrame):
         left.grid(row=0, column=0, sticky="nsew", padx=(20, 10), pady=20)
 
         ctk.CTkLabel(
-            left, text="✂️  CORTE DE PESADAS",
+            left, text="✂  CORTE DE PESADAS",
             font=ctk.CTkFont(size=16, weight="bold"),
             text_color=UI["color_warning"]
         ).pack(padx=20, pady=(20, 5), anchor="w")
@@ -56,22 +57,21 @@ class CorteView(ctk.CTkFrame):
         ctk.CTkFrame(left, height=1, fg_color=UI["color_border"]).pack(
             fill="x", padx=15, pady=(0, 15))
 
-        # Resumen del período actual
-        resumen = self._calcular_resumen()
-
+        # Resumen del período actual -- se completa cuando llega del
+        # backend (_cargar_resumen), para no bloquear esta pantalla
+        # mientras arranca.
         info_frame = ctk.CTkFrame(left, fg_color=UI["color_bg"], corner_radius=10)
         info_frame.pack(fill="x", padx=20, pady=(0, 15))
 
-        self._lbl_desde = self._item_info(
-            info_frame, "📅 Desde:", resumen["desde"])
+        self._lbl_desde = self._item_info(info_frame, "📅 Desde:", "…")
         self._item_info(info_frame, "📅 Hasta:",
                         datetime.now().strftime("%d/%m/%Y %H:%M"))
-        self._item_info(info_frame, "✅ Pesadas completas:",
-                        str(resumen["total_pesadas"]))
-        self._item_info(info_frame, "⚖️ Total neto:",
-                        f"{resumen['total_neto']:,.2f} KG")
-        self._item_info(info_frame, "✂️ Último corte:",
-                        str(resumen["ultimo_numero"]))
+        self._lbl_total_pesadas = self._item_info(
+            info_frame, "✅ Pesadas completas:", "…")
+        self._lbl_total_neto = self._item_info(
+            info_frame, "⚖ Total neto:", "…")
+        self._lbl_ultimo_corte = self._item_info(
+            info_frame, "✂ Último corte:", "…")
 
         # Observaciones
         ctk.CTkLabel(
@@ -85,7 +85,7 @@ class CorteView(ctk.CTkFrame):
         # Botón de corte
         ctk.CTkButton(
             left,
-            text="✂️  REALIZAR CORTE AHORA",
+            text="✂  REALIZAR CORTE AHORA",
             command=self._hacer_corte,
             height=52,
             font=ctk.CTkFont(size=15, weight="bold"),
@@ -119,6 +119,7 @@ class CorteView(ctk.CTkFrame):
         right.grid_columnconfigure(0, weight=1)
 
         self._cargar_historial()
+        self._cargar_resumen()
 
     def _item_info(self, parent, etiqueta, valor):
         f = ctk.CTkFrame(parent, fg_color="transparent")
@@ -130,27 +131,26 @@ class CorteView(ctk.CTkFrame):
         lbl.pack(side="left")
         return lbl
 
-    def _calcular_resumen(self) -> dict:
-        """Calcula el resumen del período pendiente de corte."""
-        try:
-            ultimos = api_client.listar_cortes(limit=1)
-        except ApiError as e:
-            messagebox.showerror("Error de conexión", str(e))
-            return {"desde": "Inicio", "total_pesadas": 0, "total_neto": 0.0, "ultimo_numero": 0}
+    def _obtener_resumen(self) -> dict:
+        """Calcula el resumen del período pendiente de corte.
+
+        Sin efectos sobre widgets -- solo I/O y aritmética, para poder
+        correr en el hilo de fondo de cargar_en_hilo() (ver
+        _cargar_resumen) además de llamarse directamente y de forma
+        síncrona desde _hacer_corte(). Puede lanzar ApiError; quien
+        llama decide cómo mostrarlo.
+        """
+        ultimos = api_client.listar_cortes(limit=1)
 
         ultimo = ultimos[0] if ultimos else None
         desde_dt = datetime.fromisoformat(ultimo["fecha_fin"]) if ultimo else datetime(2000, 1, 1)
         desde_str = _fecha_hora(ultimo["fecha_fin"]) if ultimo else "Inicio"
         num = ultimo["numero_corte"] if ultimo else 0
 
-        try:
-            # El estado se llama "completado" en la máquina de estados de Pesada
-            # (services/pesaje_service.py) — antes de la migración este filtro
-            # decía "completada" y por eso el resumen siempre daba 0 pesadas.
-            pesadas = api_client.get_kardex(fecha_inicio=desde_dt.isoformat(), estado="completado")
-        except ApiError as e:
-            messagebox.showerror("Error de conexión", str(e))
-            pesadas = []
+        # El estado se llama "completado" en la máquina de estados de Pesada
+        # (services/pesaje_service.py) — antes de la migración este filtro
+        # decía "completada" y por eso el resumen siempre daba 0 pesadas.
+        pesadas = api_client.get_kardex(fecha_inicio=desde_dt.isoformat(), estado="completado")
         total_neto = sum(float(p["peso_neto"] or 0) for p in pesadas)
 
         return {
@@ -160,17 +160,31 @@ class CorteView(ctk.CTkFrame):
             "ultimo_numero": num
         }
 
+    def _cargar_resumen(self):
+        cargar_en_hilo(
+            self, self._obtener_resumen,
+            on_exito=self._poblar_resumen,
+            on_error=lambda e: messagebox.showerror("Error de conexión", str(e)),
+        )
+
+    def _poblar_resumen(self, resumen):
+        self._lbl_desde.configure(text=resumen["desde"])
+        self._lbl_total_pesadas.configure(text=str(resumen["total_pesadas"]))
+        self._lbl_total_neto.configure(text=f"{resumen['total_neto']:,.2f} KG")
+        self._lbl_ultimo_corte.configure(text=str(resumen["ultimo_numero"]))
+
     def _cargar_historial(self):
         """Carga el historial de cortes previos."""
         for w in self._scroll_cortes.winfo_children():
             w.destroy()
 
-        try:
-            cortes = api_client.listar_cortes(limit=20)
-        except ApiError as e:
-            messagebox.showerror("Error de conexión", str(e))
-            cortes = []
+        cargar_en_hilo(
+            self, lambda: api_client.listar_cortes(limit=20),
+            on_exito=self._poblar_historial,
+            on_error=lambda e: messagebox.showerror("Error de conexión", str(e)),
+        )
 
+    def _poblar_historial(self, cortes):
         if not cortes:
             ctk.CTkLabel(
                 self._scroll_cortes,
@@ -189,7 +203,7 @@ class CorteView(ctk.CTkFrame):
 
             ctk.CTkLabel(
                 card,
-                text=f"✂️ Corte #{c['numero_corte']}",
+                text=f"✂ Corte #{c['numero_corte']}",
                 font=ctk.CTkFont(size=13, weight="bold"),
                 text_color=UI["color_warning"]
             ).pack(anchor="w", padx=12, pady=(8, 2))
@@ -203,14 +217,18 @@ class CorteView(ctk.CTkFrame):
 
             ctk.CTkLabel(
                 card,
-                text=f"✅ {c['total_pesadas']} pesadas  |  ⚖️ {float(c['total_neto_kg'] or 0):,.2f} KG",
+                text=f"✅ {c['total_pesadas']} pesadas  |  ⚖ {float(c['total_neto_kg'] or 0):,.2f} KG",
                 font=ctk.CTkFont(size=12),
                 text_color=UI["color_success"]
             ).pack(anchor="w", padx=12, pady=(0, 8))
 
     def _hacer_corte(self):
         """Ejecuta el corte."""
-        resumen = self._calcular_resumen()
+        try:
+            resumen = self._obtener_resumen()
+        except ApiError as e:
+            messagebox.showerror("Error de conexión", str(e))
+            return
 
         if resumen["total_pesadas"] == 0:
             messagebox.showwarning(

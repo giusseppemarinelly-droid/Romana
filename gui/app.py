@@ -155,6 +155,15 @@ class App(ctk.CTk):
         if not self._content_frame:
             return
 
+        # Cada pantalla carga sus datos con llamadas HTTP síncronas en
+        # el hilo principal de Tkinter durante su construcción (no hay
+        # spinner ni feedback propio) -- un cursor de espera visible
+        # convierte esa pausa en algo intencional en vez de una
+        # ventana que "no responde" sin explicación. update_idletasks()
+        # fuerza a pintar el cursor ANTES de la llamada bloqueante.
+        self.configure(cursor="watch")
+        self.update_idletasks()
+
         # Destruir pantalla actual
         if self._pantalla_actual:
             self._pantalla_actual.destroy()
@@ -166,31 +175,34 @@ class App(ctk.CTk):
         # Actualizar título en el header
         titulos = {
             "dashboard":         "📊 Dashboard",
-            "pesaje_entrada":    "⬇️ Entrada de Camión",
-            "pesaje_salida":     "⬆️ Salida / Capturar Peso",
-            "completar_pesaje":  "✔️ Completar Pesaje",
+            "pesaje_entrada":    "↓ Entrada de Camión",
+            "pesaje_salida":     "↑ Salida / Capturar Peso",
+            "completar_pesaje":  "✔ Completar Pesaje",
             "centro_costos":     "📋 Centro de Costos — Aprobaciones",
             "kardex":            "📋 Kardex de Pesadas",
-            "corte":             "✂️ Corte de Pesadas",
+            "corte":             "✂ Corte de Pesadas",
             "vehiculos":         "🚛 Vehículos",
             "conductores":       "👤 Conductores",
             "proveedores":       "🏭 Proveedores",
             "productos":         "📦 Productos",
             "destinos":          "📍 Destinos",
-            "lotes":             "🗂️ Lotes",
+            "lotes":             "🗂 Lotes",
             "remolques":         "🚜 Remolques",
             "contenedores":      "📫 Contenedores",
             "usuarios":          "👥 Usuarios",
-            "configuracion":     "⚙️ Configuración",
+            "configuracion":     "⚙ Configuración",
         }
         if self._header:
             self._header.actualizar_titulo(titulos.get(destino, destino))
 
         # Cargar la pantalla correspondiente
-        pantalla = self._crear_pantalla(destino, self._content_frame)
-        if pantalla:
-            pantalla.grid(row=0, column=0, sticky="nsew")
-            self._pantalla_actual = pantalla
+        try:
+            pantalla = self._crear_pantalla(destino, self._content_frame)
+            if pantalla:
+                pantalla.grid(row=0, column=0, sticky="nsew")
+                self._pantalla_actual = pantalla
+        finally:
+            self.configure(cursor="")
 
     def _crear_pantalla(self, destino: str, parent) -> ctk.CTkFrame:
         """Factory de pantallas. Crea y retorna el frame de la pantalla pedida."""

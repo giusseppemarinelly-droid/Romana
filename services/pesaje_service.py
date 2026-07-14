@@ -9,6 +9,7 @@
 
 from datetime import datetime
 from typing import Optional
+from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import joinedload
 from database.engine import SessionLocal
@@ -218,6 +219,44 @@ def listar_pesadas_completadas(limit: int = 100) -> list:
             Pesada.estado == "completado",
             Pesada.anulada == False
         ).order_by(Pesada.fecha_salida.desc()).limit(limit).all()
+    finally:
+        db.close()
+
+
+def obtener_estadisticas_dashboard() -> dict:
+    """
+    Métricas del dashboard, agregadas en SQL (COUNT/SUM) en vez de
+    traer las filas completas con sus relaciones como hace
+    listar_pesadas_completadas() -- esa función existe para el kardex,
+    que sí necesita las filas enteras; el dashboard solo necesita
+    cuatro números y no debería bajar por red cientos de registros
+    (creciendo indefinidamente con el tiempo) solo para contarlos.
+    """
+    db = SessionLocal()
+    try:
+        en_planta = db.query(func.count(Pesada.id)).filter(
+            Pesada.estado == "en_planta", Pesada.anulada == False
+        ).scalar() or 0
+
+        hoy = datetime.now().date()
+        completadas_hoy, neto_hoy = db.query(
+            func.count(Pesada.id), func.coalesce(func.sum(Pesada.peso_neto), 0)
+        ).filter(
+            Pesada.estado == "completado",
+            Pesada.anulada == False,
+            func.date(Pesada.fecha_salida) == hoy,
+        ).one()
+
+        total_completadas = db.query(func.count(Pesada.id)).filter(
+            Pesada.estado == "completado", Pesada.anulada == False
+        ).scalar() or 0
+
+        return {
+            "en_planta": en_planta,
+            "completadas_hoy": completadas_hoy or 0,
+            "neto_hoy_kg": float(neto_hoy or 0),
+            "total_completadas": total_completadas,
+        }
     finally:
         db.close()
 

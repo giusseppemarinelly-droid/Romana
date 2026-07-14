@@ -104,3 +104,10 @@ class CorteOut(BaseModel):
     total_pesadas: int
     total_neto_kg: float
     observaciones: Optional[str] = None
+
+
+class EstadisticasOut(BaseModel):
+    en_planta: int
+    completadas_hoy: int
+    neto_hoy_kg: float
+    total_completadas: int

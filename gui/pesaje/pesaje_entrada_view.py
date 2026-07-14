@@ -7,9 +7,28 @@ from tkinter import messagebox
 from config import UI
 from client.api_client import api_client, ApiError
 from hardware.display_manager import leer_peso_actual, es_peso_estable
+from gui.async_utils import cargar_en_hilo
 
 
 TIPO_PESAJE_OPCIONES = ["PESAJE GENERAL", "PRODUCTO TERMINADO"]
+
+# Estilo compartido de campos de entrada — fondo levemente distinto de
+# la tarjeta (color_input_bg) y borde de 2px, para que se noten como
+# "editables" en vez del recuadro plano que traía CTk por defecto.
+_INPUT_STYLE = dict(
+    fg_color=UI["color_input_bg"],
+    border_color=UI["color_border"],
+    border_width=2,
+    corner_radius=8,
+)
+_COMBO_STYLE = dict(
+    _INPUT_STYLE,
+    button_color=UI["color_accent"],
+    button_hover_color=UI["color_accent_hover"],
+    dropdown_fg_color=UI["color_card"],
+    dropdown_hover_color=UI["color_bg"],
+    dropdown_text_color=UI["color_text"],
+)
 
 
 class PesajeEntradaView(ctk.CTkFrame):
@@ -21,8 +40,21 @@ class PesajeEntradaView(ctk.CTkFrame):
         self._vehiculo_seleccionado = None
         self._conductor_seleccionado = None
         self._productos_cache = []
+        self._after_id_peso = None
         self._construir()
         self._actualizar_peso()
+
+    def destroy(self):
+        # _actualizar_peso() se reprograma solo con self.after() cada
+        # 3s -- sin cancelarlo acá, al navegar a otra pantalla (que
+        # destruye este frame) el timer sigue vivo para siempre, leyendo
+        # la báscula cada 3s contra widgets ya destruidos. Cada visita a
+        # esta pantalla dejaba un timer fantasma más corriendo de fondo,
+        # y con varios acumulados se sentían pausas al navegar.
+        if self._after_id_peso is not None:
+            self.after_cancel(self._after_id_peso)
+            self._after_id_peso = None
+        super().destroy()
 
     # ----------------------------------------------------------
     def _construir(self):
@@ -37,7 +69,7 @@ class PesajeEntradaView(ctk.CTkFrame):
         header.grid_columnconfigure(1, weight=1)
 
         ctk.CTkLabel(
-            header, text="⬇  REGISTRO DE ENTRADA",
+            header, text="↓  REGISTRO DE ENTRADA",
             font=ctk.CTkFont(family=UI["fuente"], size=16, weight="bold"),
             text_color=UI["color_accent"]
         ).grid(row=0, column=0, padx=20, pady=15, sticky="w")
@@ -85,8 +117,13 @@ class PesajeEntradaView(ctk.CTkFrame):
                 value=texto,
                 command=self._on_tipo_changed,
                 font=ctk.CTkFont(family=UI["fuente"], size=13),
-                fg_color=UI["color_accent"]
-            ).pack(side="left", padx=(0, 20))
+                fg_color=UI["color_accent"],
+                hover_color=UI["color_accent_hover"],
+                border_color=UI["color_border"],
+                radiobutton_width=20,
+                radiobutton_height=20,
+                border_width_checked=6,
+            ).pack(side="left", padx=(0, 24))
         row += 1
 
         # ── Producto ──────────────────────────────────────────
@@ -97,11 +134,14 @@ class PesajeEntradaView(ctk.CTkFrame):
                         padx=18, pady=(4, 10))
         prod_frame.grid_columnconfigure(1, weight=1)
 
+        # Badge con el código del producto — chip azul claro en vez de
+        # texto plano, para que se lea como un dato "vivo" del formulario.
         self._lbl_cod_prod = ctk.CTkLabel(
             prod_frame, text="—",
             font=ctk.CTkFont(family=UI["fuente"], size=13, weight="bold"),
             text_color=UI["color_accent"],
-            width=50, anchor="center"
+            fg_color="#dbeafe", corner_radius=8,
+            width=50, height=40, anchor="center"
         )
         self._lbl_cod_prod.grid(row=0, column=0, padx=(0, 8))
 
@@ -109,8 +149,9 @@ class PesajeEntradaView(ctk.CTkFrame):
             prod_frame,
             values=["-- Seleccione --"],
             command=self._on_producto_changed,
-            height=36,
-            font=ctk.CTkFont(family=UI["fuente"], size=13)
+            height=40,
+            font=ctk.CTkFont(family=UI["fuente"], size=13),
+            **_COMBO_STYLE,
         )
         self._combo_producto.grid(row=0, column=1, sticky="ew")
         self._combo_producto.set("-- Seleccione --")
@@ -127,15 +168,16 @@ class PesajeEntradaView(ctk.CTkFrame):
         self._combo_vehiculo = ctk.CTkComboBox(
             veh_frame,
             values=["-- Seleccione o escriba placa --"],
-            height=36,
-            font=ctk.CTkFont(family=UI["fuente"], size=13)
+            height=40,
+            font=ctk.CTkFont(family=UI["fuente"], size=13),
+            **_COMBO_STYLE,
         )
         self._combo_vehiculo.grid(row=0, column=0, sticky="ew", padx=(0, 8))
 
         ctk.CTkButton(
             veh_frame, text="🔍 Buscar",
             command=self._buscar_vehiculo,
-            width=90, height=36,
+            width=96, height=40, corner_radius=8,
             fg_color=UI["color_accent"],
             hover_color=UI["color_accent_hover"],
             font=ctk.CTkFont(family=UI["fuente"], size=12)
@@ -150,18 +192,12 @@ class PesajeEntradaView(ctk.CTkFrame):
                                       padx=18, pady=(0, 6), sticky="w")
         row += 2
 
-        # Cargar vehículos en el combo
-        try:
-            vehiculos = api_client.listar_maestro("vehiculos")
-        except ApiError as e:
-            messagebox.showerror("Error de conexión", str(e))
-            vehiculos = []
-        self._vehiculos_map = {v["placa"]: v for v in vehiculos}
-        self._combo_vehiculo.configure(
-            values=["-- Seleccione --"] + [v["placa"] for v in vehiculos]
-        )
-        self._combo_vehiculo.set("-- Seleccione --")
+        # Vehículos se cargan en segundo plano (_cargar_vehiculos) para no
+        # bloquear la ventana mientras arranca esta pantalla -- ver
+        # gui/async_utils.py.
+        self._vehiculos_map = {}
         self._combo_vehiculo.configure(command=self._on_vehiculo_changed)
+        self._cargar_vehiculos()
 
         # ── Conductor ─────────────────────────────────────────
         self._seccion(card, "CONDUCTOR", row); row += 1
@@ -173,13 +209,15 @@ class PesajeEntradaView(ctk.CTkFrame):
 
         self._entry_cedula = ctk.CTkEntry(
             cond_frame, placeholder_text="Cédula / Documento",
-            height=36, font=ctk.CTkFont(family=UI["fuente"], size=13)
+            height=40, font=ctk.CTkFont(family=UI["fuente"], size=13),
+            **_INPUT_STYLE,
         )
         self._entry_cedula.grid(row=0, column=0, sticky="ew", padx=(0, 8))
 
         self._entry_nombre_conductor = ctk.CTkEntry(
             cond_frame, placeholder_text="Nombre del conductor",
-            height=36, font=ctk.CTkFont(family=UI["fuente"], size=13)
+            height=40, font=ctk.CTkFont(family=UI["fuente"], size=13),
+            **_INPUT_STYLE,
         )
         self._entry_nombre_conductor.grid(row=0, column=1, sticky="ew")
         row += 1
@@ -188,7 +226,8 @@ class PesajeEntradaView(ctk.CTkFrame):
         self._seccion(card, "EMPRESA TRANSPORTISTA", row); row += 1
         self._entry_transportista = ctk.CTkEntry(
             card, placeholder_text="Nombre de la empresa transportista",
-            height=36, font=ctk.CTkFont(family=UI["fuente"], size=13)
+            height=40, font=ctk.CTkFont(family=UI["fuente"], size=13),
+            **_INPUT_STYLE,
         )
         self._entry_transportista.grid(row=row, column=0, columnspan=2,
                                         sticky="ew", padx=18, pady=(4, 10))
@@ -198,7 +237,8 @@ class PesajeEntradaView(ctk.CTkFrame):
         self._seccion(card, "EMPRESA (CLIENTE O PROVEEDOR)", row); row += 1
         self._entry_empresa_cp = ctk.CTkEntry(
             card, placeholder_text="Nombre de la empresa cliente o proveedor",
-            height=36, font=ctk.CTkFont(family=UI["fuente"], size=13)
+            height=40, font=ctk.CTkFont(family=UI["fuente"], size=13),
+            **_INPUT_STYLE,
         )
         self._entry_empresa_cp.grid(row=row, column=0, columnspan=2,
                                      sticky="ew", padx=18, pady=(4, 18))
@@ -229,22 +269,27 @@ class PesajeEntradaView(ctk.CTkFrame):
 
         self._lbl_peso = ctk.CTkLabel(
             bascula_card, text="--- KG",
-            font=ctk.CTkFont(family=UI["fuente"], size=36, weight="bold"),
+            font=ctk.CTkFont(family=UI["fuente"], size=40, weight="bold"),
             text_color=UI["color_accent"]
         )
         self._lbl_peso.grid(row=1, column=0, padx=16, pady=4)
 
+        # Pill de estado — mismo patrón visual que el badge de rol del
+        # header (fondo de color + texto), en vez de solo un punto de
+        # color suelto.
         self._lbl_estable = ctk.CTkLabel(
-            bascula_card, text="● En espera...",
-            font=ctk.CTkFont(family=UI["fuente"], size=12),
-            text_color=UI["color_muted"]
+            bascula_card, text="●  En espera...",
+            font=ctk.CTkFont(family=UI["fuente"], size=12, weight="bold"),
+            text_color=UI["color_muted"],
+            fg_color=UI["color_bg"], corner_radius=6,
+            width=160, height=26,
         )
-        self._lbl_estable.grid(row=2, column=0, padx=16, pady=4)
+        self._lbl_estable.grid(row=2, column=0, padx=16, pady=6)
 
         ctk.CTkButton(
             bascula_card, text="↻  Actualizar peso",
             command=self._actualizar_peso,
-            height=34, fg_color="transparent",
+            height=36, corner_radius=8, fg_color="transparent",
             border_color=UI["color_accent"], border_width=1,
             text_color=UI["color_accent"],
             hover_color=UI["color_bg"],
@@ -288,7 +333,7 @@ class PesajeEntradaView(ctk.CTkFrame):
         # ── Botón registrar ───────────────────────────────────
         ctk.CTkButton(
             panel,
-            text="⬇  REGISTRAR ENTRADA",
+            text="↓  REGISTRAR ENTRADA",
             command=self._registrar,
             height=56,
             font=ctk.CTkFont(family=UI["fuente"], size=15, weight="bold"),
@@ -307,6 +352,21 @@ class PesajeEntradaView(ctk.CTkFrame):
         ).grid(row=row, column=0, columnspan=2, sticky="w", padx=18, pady=(12, 0))
 
     # ----------------------------------------------------------
+    def _cargar_vehiculos(self):
+        cargar_en_hilo(
+            self, lambda: api_client.listar_maestro("vehiculos"),
+            on_exito=self._on_vehiculos_cargados,
+            on_error=lambda e: messagebox.showerror("Error de conexión", str(e)),
+        )
+
+    def _on_vehiculos_cargados(self, vehiculos):
+        self._vehiculos_map = {v["placa"]: v for v in vehiculos}
+        self._combo_vehiculo.configure(
+            values=["-- Seleccione --"] + [v["placa"] for v in vehiculos]
+        )
+        self._combo_vehiculo.set("-- Seleccione --")
+
+    # ----------------------------------------------------------
     def _cargar_productos(self, tipo: str):
         """Carga la lista de productos según el tipo de pesaje.
 
@@ -315,11 +375,13 @@ class PesajeEntradaView(ctk.CTkFrame):
         buscador de vehículos/conductores que sí necesitaba búsqueda
         indexada en servidor.
         """
-        try:
-            todos = api_client.listar_maestro("productos")
-        except ApiError as e:
-            messagebox.showerror("Error de conexión", str(e))
-            todos = []
+        cargar_en_hilo(
+            self, lambda: api_client.listar_maestro("productos"),
+            on_exito=lambda todos: self._on_productos_cargados(todos, tipo),
+            on_error=lambda e: messagebox.showerror("Error de conexión", str(e)),
+        )
+
+    def _on_productos_cargados(self, todos, tipo):
         self._productos_cache = [p for p in todos if p["tipo_pesaje"] == tipo]
         nombres = [f"{p['codigo']} — {p['nombre']}" for p in self._productos_cache]
         self._combo_producto.configure(
@@ -391,19 +453,22 @@ class PesajeEntradaView(ctk.CTkFrame):
                 self._lbl_peso.configure(text=f"{peso:,.0f} KG")
                 if es_peso_estable():
                     self._lbl_estable.configure(
-                        text="● Peso ESTABLE", text_color=UI["color_success"])
+                        text="●  PESO ESTABLE", text_color=UI["color_success"],
+                        fg_color="#d1fae5")
                 else:
                     self._lbl_estable.configure(
-                        text="⟳ Estabilizando...", text_color="#f59e0b")
+                        text="↻  Estabilizando...", text_color="#b45309",
+                        fg_color="#fef3c7")
             else:
                 self._lbl_peso.configure(text="--- KG")
                 self._lbl_estable.configure(
-                    text="Sin señal", text_color=UI["color_muted"])
+                    text="●  Sin señal", text_color=UI["color_muted"],
+                    fg_color=UI["color_bg"])
         except Exception:
             self._lbl_peso.configure(text="ERROR")
 
         # Auto-refrescar cada 3 segundos
-        self.after(3000, self._actualizar_peso)
+        self._after_id_peso = self.after(3000, self._actualizar_peso)
 
     # ----------------------------------------------------------
     def _registrar(self):
