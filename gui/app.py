@@ -35,6 +35,15 @@ class App(ctk.CTk):
     """
 
     def __init__(self):
+        # CTk (en Windows) hace su propio withdraw()/update()/deiconify()
+        # al arrancar para pintar la barra de título oscura -- esa
+        # coreografía interna (ver customtkinter/windows/ctk_tk.py,
+        # _windows_set_titlebar_color) competía con el pedido de pantalla
+        # completa de más abajo y la ventana terminaba apareciendo en su
+        # tamaño normal, con bordes, en vez de fullscreen. Desactivarla
+        # evita el conflicto (se pierde el detalle cosmético de la barra
+        # oscura, no afecta nada funcional).
+        self._deactivate_windows_window_header_manipulation = True
         super().__init__()
 
         # --- Configuración de la ventana ---
@@ -42,8 +51,18 @@ class App(ctk.CTk):
         self.geometry("1280x780")
         self.minsize(1024, 680)
 
-        # Centrar la ventana en pantalla
+        # Centrar la ventana (por si el usuario la restaura con doble
+        # clic en la barra de título) y arrancar maximizada -- ventana
+        # normal con bordes y barra de título, ocupando toda la
+        # pantalla (no fullscreen sin bordes).
         self._centrar_ventana()
+        self.state("zoomed")
+
+        # F11 alterna pantalla completa sin bordes (kiosko); Esc sale de
+        # ella y vuelve a la ventana maximizada normal.
+        self.bind("<F11>", lambda e: self.attributes(
+            "-fullscreen", not self.attributes("-fullscreen")))
+        self.bind("<Escape>", lambda e: self.attributes("-fullscreen", False))
 
         # --- Estado de la aplicación ---
         self._pantalla_actual = None   # Frame de la pantalla activa
