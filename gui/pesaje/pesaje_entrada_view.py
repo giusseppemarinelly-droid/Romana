@@ -200,12 +200,17 @@ class PesajeEntradaView(ctk.CTkFrame):
         self._cargar_vehiculos()
 
         # ── Conductor ─────────────────────────────────────────
+        # Mismo patrón que Vehículo: se escribe la cédula, se busca contra
+        # el maestro de conductores (ILIKE sobre documento/nombre en el
+        # backend) y si existe se autocompleta el nombre y queda linkeado
+        # por conductor_id (mejor para kardex/reportes); si no existe,
+        # sigue funcionando como texto libre (cedula_conductor_libre).
         self._seccion(card, "CONDUCTOR", row); row += 1
 
         cond_frame = ctk.CTkFrame(card, fg_color="transparent")
         cond_frame.grid(row=row, column=0, columnspan=2, sticky="ew",
-                         padx=18, pady=(4, 10))
-        cond_frame.grid_columnconfigure((0, 1), weight=1)
+                         padx=18, pady=(4, 6))
+        cond_frame.grid_columnconfigure(0, weight=1)
 
         self._entry_cedula = ctk.CTkEntry(
             cond_frame, placeholder_text="Cédula / Documento",
@@ -213,13 +218,34 @@ class PesajeEntradaView(ctk.CTkFrame):
             **_INPUT_STYLE,
         )
         self._entry_cedula.grid(row=0, column=0, sticky="ew", padx=(0, 8))
+        self._entry_cedula.bind("<Return>", lambda e: self._buscar_conductor())
+
+        ctk.CTkButton(
+            cond_frame, text="🔍 Buscar",
+            command=self._buscar_conductor,
+            width=96, height=40, corner_radius=8,
+            fg_color=UI["color_accent"],
+            hover_color=UI["color_accent_hover"],
+            font=ctk.CTkFont(family=UI["fuente"], size=12)
+        ).grid(row=0, column=1)
+        row += 1
 
         self._entry_nombre_conductor = ctk.CTkEntry(
-            cond_frame, placeholder_text="Nombre del conductor",
+            card, placeholder_text="Nombre del conductor",
             height=40, font=ctk.CTkFont(family=UI["fuente"], size=13),
             **_INPUT_STYLE,
         )
-        self._entry_nombre_conductor.grid(row=0, column=1, sticky="ew")
+        self._entry_nombre_conductor.grid(row=row, column=0, columnspan=2,
+                                           sticky="ew", padx=18, pady=(0, 4))
+        row += 1
+
+        self._lbl_conductor_info = ctk.CTkLabel(
+            card, text="",
+            font=ctk.CTkFont(family=UI["fuente"], size=11),
+            text_color=UI["color_muted"]
+        )
+        self._lbl_conductor_info.grid(row=row, column=0, columnspan=2,
+                                       padx=18, pady=(0, 6), sticky="w")
         row += 1
 
         # ── Empresa Transportista ─────────────────────────────
@@ -445,6 +471,48 @@ class PesajeEntradaView(ctk.CTkFrame):
                 "Puede continuar con esta placa o registrarla primero en Maestros → Vehículos.")
 
     # ----------------------------------------------------------
+    def _buscar_conductor(self):
+        """Busca el conductor por cédula contra el maestro (igual que Vehículo).
+
+        Si existe, autocompleta el nombre y lo deja linkeado por
+        conductor_id (mejor para kardex/reportes). Si no existe, el
+        operador puede seguir escribiendo el nombre a mano -- se guarda
+        como texto libre (cedula_conductor_libre), igual que antes.
+        """
+        cedula = self._entry_cedula.get().strip()
+        if not cedula:
+            messagebox.showwarning("Buscar", "Ingrese la cédula o documento del conductor")
+            return
+
+        self._conductor_seleccionado = None
+        try:
+            encontrados = api_client.listar_maestro("conductores", search=cedula)
+        except ApiError as e:
+            messagebox.showerror("Error de conexión", str(e))
+            return
+
+        cedula_norm = cedula.upper().replace(" ", "")
+        c = next(
+            (x for x in encontrados
+             if x["documento"].upper().replace(" ", "") == cedula_norm),
+            None
+        )
+
+        if c:
+            self._conductor_seleccionado = c
+            self._entry_nombre_conductor.delete(0, "end")
+            self._entry_nombre_conductor.insert(0, c["nombre"])
+            self._lbl_conductor_info.configure(
+                text=f"✓ Conductor registrado  |  {c.get('telefono') or 'sin teléfono'}",
+                text_color=UI["color_success"]
+            )
+        else:
+            self._lbl_conductor_info.configure(
+                text="Conductor no registrado — se guardará solo con la cédula ingresada.",
+                text_color=UI["color_muted"]
+            )
+
+    # ----------------------------------------------------------
     def _actualizar_peso(self):
         """Lee el peso de la báscula y actualiza la pantalla."""
         try:
@@ -533,6 +601,17 @@ class PesajeEntradaView(ctk.CTkFrame):
                     producto_id = p["id"]
                     break
 
+        # Conductor -- solo se usa el conductor_id si sigue coincidiendo con
+        # la cédula tipeada (si el operador la editó después de buscar, el
+        # match queda obsoleto y se cae a texto libre en vez de linkear al
+        # conductor equivocado).
+        cedula_conductor = self._entry_cedula.get().strip()
+        conductor_id = None
+        if (self._conductor_seleccionado and
+                self._conductor_seleccionado["documento"].upper().replace(" ", "") ==
+                cedula_conductor.upper().replace(" ", "")):
+            conductor_id = self._conductor_seleccionado["id"]
+
         resultado = api_client.registrar_entrada(
             peso_bruto=float(peso),
             vehiculo_id=vehiculo["id"],
@@ -540,7 +619,8 @@ class PesajeEntradaView(ctk.CTkFrame):
             producto_id=producto_id,
             empresa_transportista=self._entry_transportista.get().strip(),
             empresa_cliente_proveedor=self._entry_empresa_cp.get().strip(),
-            cedula_conductor_libre=self._entry_cedula.get().strip(),
+            conductor_id=conductor_id,
+            cedula_conductor_libre=cedula_conductor,
             observaciones=""
         )
 
@@ -566,6 +646,8 @@ class PesajeEntradaView(ctk.CTkFrame):
         self._lbl_vehiculo_info.configure(text="")
         self._entry_cedula.delete(0, "end")
         self._entry_nombre_conductor.delete(0, "end")
+        self._conductor_seleccionado = None
+        self._lbl_conductor_info.configure(text="")
         self._entry_transportista.delete(0, "end")
         self._entry_empresa_cp.delete(0, "end")
         self._lbl_resumen_tipo.configure(text="Tipo: —")

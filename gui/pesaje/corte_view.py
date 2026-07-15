@@ -40,7 +40,7 @@ class CorteView(ctk.CTkFrame):
 
         ctk.CTkLabel(
             left, text="✂  CORTE DE PESADAS",
-            font=ctk.CTkFont(size=16, weight="bold"),
+            font=ctk.CTkFont(family=UI["fuente"], size=16, weight="bold"),
             text_color=UI["color_warning"]
         ).pack(padx=20, pady=(20, 5), anchor="w")
 
@@ -49,7 +49,7 @@ class CorteView(ctk.CTkFrame):
             text="Un corte cierra el período actual y genera\n"
                  "un resumen de todas las pesadas completadas\n"
                  "desde el último corte.",
-            font=ctk.CTkFont(size=12),
+            font=ctk.CTkFont(family=UI["fuente"], size=12),
             text_color=UI["color_muted"],
             justify="left"
         ).pack(padx=20, pady=(5, 15), anchor="w")
@@ -76,10 +76,10 @@ class CorteView(ctk.CTkFrame):
         # Observaciones
         ctk.CTkLabel(
             left, text="Observaciones del corte:",
-            font=ctk.CTkFont(size=12), text_color=UI["color_muted"], anchor="w"
+            font=ctk.CTkFont(family=UI["fuente"], size=12), text_color=UI["color_muted"], anchor="w"
         ).pack(fill="x", padx=20, pady=(0, 4))
 
-        self._txt_obs = ctk.CTkTextbox(left, height=80, font=ctk.CTkFont(size=12))
+        self._txt_obs = ctk.CTkTextbox(left, height=80, font=ctk.CTkFont(family=UI["fuente"], size=12))
         self._txt_obs.pack(fill="x", padx=20, pady=(0, 15))
 
         # Botón de corte
@@ -88,7 +88,7 @@ class CorteView(ctk.CTkFrame):
             text="✂  REALIZAR CORTE AHORA",
             command=self._hacer_corte,
             height=52,
-            font=ctk.CTkFont(size=15, weight="bold"),
+            font=ctk.CTkFont(family=UI["fuente"], size=15, weight="bold"),
             fg_color=UI["color_warning"],
             hover_color=UI["color_accent_hover"],
             corner_radius=10
@@ -107,7 +107,7 @@ class CorteView(ctk.CTkFrame):
 
         ctk.CTkLabel(
             right, text="📜 Historial de Cortes",
-            font=ctk.CTkFont(size=14, weight="bold"),
+            font=ctk.CTkFont(family=UI["fuente"], size=14, weight="bold"),
             text_color=UI["color_text"]
         ).grid(row=0, column=0, padx=18, pady=(15, 5), sticky="w")
 
@@ -124,9 +124,9 @@ class CorteView(ctk.CTkFrame):
     def _item_info(self, parent, etiqueta, valor):
         f = ctk.CTkFrame(parent, fg_color="transparent")
         f.pack(fill="x", padx=12, pady=4)
-        ctk.CTkLabel(f, text=etiqueta, font=ctk.CTkFont(size=11),
+        ctk.CTkLabel(f, text=etiqueta, font=ctk.CTkFont(family=UI["fuente"], size=11),
                      text_color=UI["color_muted"], width=150, anchor="w").pack(side="left")
-        lbl = ctk.CTkLabel(f, text=valor, font=ctk.CTkFont(size=12, weight="bold"),
+        lbl = ctk.CTkLabel(f, text=valor, font=ctk.CTkFont(family=UI["fuente"], size=12, weight="bold"),
                             text_color=UI["color_text"])
         lbl.pack(side="left")
         return lbl
@@ -189,7 +189,7 @@ class CorteView(ctk.CTkFrame):
             ctk.CTkLabel(
                 self._scroll_cortes,
                 text="No hay cortes realizados aún",
-                font=ctk.CTkFont(size=12),
+                font=ctk.CTkFont(family=UI["fuente"], size=12),
                 text_color=UI["color_muted"]
             ).pack(pady=30)
             return
@@ -204,21 +204,21 @@ class CorteView(ctk.CTkFrame):
             ctk.CTkLabel(
                 card,
                 text=f"✂ Corte #{c['numero_corte']}",
-                font=ctk.CTkFont(size=13, weight="bold"),
+                font=ctk.CTkFont(family=UI["fuente"], size=13, weight="bold"),
                 text_color=UI["color_warning"]
             ).pack(anchor="w", padx=12, pady=(8, 2))
 
             ctk.CTkLabel(
                 card,
                 text=f"📅 {_fecha_hora(c['fecha_inicio'])} → {_fecha_hora(c['fecha_fin'])}",
-                font=ctk.CTkFont(size=11),
+                font=ctk.CTkFont(family=UI["fuente"], size=11),
                 text_color=UI["color_muted"]
             ).pack(anchor="w", padx=12)
 
             ctk.CTkLabel(
                 card,
                 text=f"✅ {c['total_pesadas']} pesadas  |  ⚖ {float(c['total_neto_kg'] or 0):,.2f} KG",
-                font=ctk.CTkFont(size=12),
+                font=ctk.CTkFont(family=UI["fuente"], size=12),
                 text_color=UI["color_success"]
             ).pack(anchor="w", padx=12, pady=(0, 8))
 

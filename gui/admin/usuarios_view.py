@@ -50,14 +50,14 @@ class UsuariosView(ctk.CTkFrame):
 
         ctk.CTkLabel(
             header, text="👥 GESTIÓN DE USUARIOS",
-            font=ctk.CTkFont(size=15, weight="bold"),
+            font=ctk.CTkFont(family=UI["fuente"], size=15, weight="bold"),
             text_color=UI["color_accent"]
         ).pack(side="left")
 
         ctk.CTkButton(
             header, text="+ Nuevo Usuario",
             command=self._nuevo,
-            height=32, fg_color=UI["color_accent"], hover_color=UI["color_accent_hover"]
+            height=32, font=ctk.CTkFont(family=UI["fuente"], size=12), fg_color=UI["color_accent"], hover_color=UI["color_accent_hover"]
         ).pack(side="right")
 
         # Tabla de usuarios
@@ -67,11 +67,11 @@ class UsuariosView(ctk.CTkFrame):
             foreground=UI["color_text"],
             fieldbackground=UI["color_card"],
             rowheight=30,
-            font=("Helvetica", 12))
+            font=("Segoe UI", 12))
         style.configure("Usr.Treeview.Heading",
             background=UI["color_bg"],
             foreground=UI["color_text"],
-            font=("Helvetica", 10, "bold"))
+            font=("Segoe UI", 10, "bold"))
         style.map("Usr.Treeview",
             background=[("selected", "#E0F2FE")],
             foreground=[("selected", "#1E3A8A")])
@@ -109,7 +109,7 @@ class UsuariosView(ctk.CTkFrame):
 
         ctk.CTkLabel(
             right, text="📝 Datos del Usuario",
-            font=ctk.CTkFont(size=14, weight="bold"),
+            font=ctk.CTkFont(family=UI["fuente"], size=14, weight="bold"),
             text_color=UI["color_text"]
         ).pack(padx=18, pady=(15, 10), anchor="w")
 
@@ -117,24 +117,24 @@ class UsuariosView(ctk.CTkFrame):
             fill="x", padx=15, pady=(0, 15))
 
         # Username
-        ctk.CTkLabel(right, text="Nombre de usuario *", font=ctk.CTkFont(size=11),
+        ctk.CTkLabel(right, text="Nombre de usuario *", font=ctk.CTkFont(family=UI["fuente"], size=11),
                      text_color=UI["color_muted"], anchor="w").pack(fill="x", padx=18, pady=(0, 2))
-        self._f_username = ctk.CTkEntry(right, height=35, font=ctk.CTkFont(size=12))
+        self._f_username = ctk.CTkEntry(right, height=35, font=ctk.CTkFont(family=UI["fuente"], size=12))
         self._f_username.pack(fill="x", padx=18, pady=(0, 10))
 
         # Nombre completo
-        ctk.CTkLabel(right, text="Nombre completo *", font=ctk.CTkFont(size=11),
+        ctk.CTkLabel(right, text="Nombre completo *", font=ctk.CTkFont(family=UI["fuente"], size=11),
                      text_color=UI["color_muted"], anchor="w").pack(fill="x", padx=18, pady=(0, 2))
-        self._f_nombre = ctk.CTkEntry(right, height=35, font=ctk.CTkFont(size=12))
+        self._f_nombre = ctk.CTkEntry(right, height=35, font=ctk.CTkFont(family=UI["fuente"], size=12))
         self._f_nombre.pack(fill="x", padx=18, pady=(0, 10))
 
         # Nivel
-        ctk.CTkLabel(right, text="Nivel de acceso", font=ctk.CTkFont(size=11),
+        ctk.CTkLabel(right, text="Nivel de acceso", font=ctk.CTkFont(family=UI["fuente"], size=11),
                      text_color=UI["color_muted"], anchor="w").pack(fill="x", padx=18, pady=(0, 2))
         self._f_nivel = ctk.CTkComboBox(
             right,
             values=["1 — Administrador", "2 — Supervisor", "3 — Operador"],
-            height=35, font=ctk.CTkFont(size=12)
+            height=35, font=ctk.CTkFont(family=UI["fuente"], size=12)
         )
         self._f_nivel.pack(fill="x", padx=18, pady=(0, 15))
         self._f_nivel.set("3 — Operador")
@@ -144,17 +144,17 @@ class UsuariosView(ctk.CTkFrame):
             fill="x", padx=15, pady=(0, 10))
 
         ctk.CTkLabel(right, text="🔐 Contraseña",
-                     font=ctk.CTkFont(size=12, weight="bold"),
+                     font=ctk.CTkFont(family=UI["fuente"], size=12, weight="bold"),
                      text_color=UI["color_text"]).pack(fill="x", padx=18)
 
-        ctk.CTkLabel(right, text="Nueva contraseña *", font=ctk.CTkFont(size=11),
+        ctk.CTkLabel(right, text="Nueva contraseña *", font=ctk.CTkFont(family=UI["fuente"], size=11),
                      text_color=UI["color_muted"], anchor="w").pack(fill="x", padx=18, pady=(5, 2))
-        self._f_pass = ctk.CTkEntry(right, show="●", height=35, font=ctk.CTkFont(size=12))
+        self._f_pass = ctk.CTkEntry(right, show="●", height=35, font=ctk.CTkFont(family=UI["fuente"], size=12))
         self._f_pass.pack(fill="x", padx=18, pady=(0, 8))
 
-        ctk.CTkLabel(right, text="Confirmar contraseña *", font=ctk.CTkFont(size=11),
+        ctk.CTkLabel(right, text="Confirmar contraseña *", font=ctk.CTkFont(family=UI["fuente"], size=11),
                      text_color=UI["color_muted"], anchor="w").pack(fill="x", padx=18, pady=(0, 2))
-        self._f_pass2 = ctk.CTkEntry(right, show="●", height=35, font=ctk.CTkFont(size=12))
+        self._f_pass2 = ctk.CTkEntry(right, show="●", height=35, font=ctk.CTkFont(family=UI["fuente"], size=12))
         self._f_pass2.pack(fill="x", padx=18, pady=(0, 15))
 
         # Botones
@@ -164,14 +164,15 @@ class UsuariosView(ctk.CTkFrame):
         ctk.CTkButton(
             btn_frame, text="💾 Guardar",
             command=self._guardar,
-            height=40, font=ctk.CTkFont(size=13, weight="bold"),
+            height=40, font=ctk.CTkFont(family=UI["fuente"], size=13, weight="bold"),
             fg_color=UI["color_success"], hover_color=UI["color_success_hover"]
         ).pack(fill="x", pady=(0, 5))
 
         self._btn_activar = ctk.CTkButton(
             btn_frame, text="✅ Activar / 🚫 Desactivar",
             command=self._toggle_activo,
-            height=36, fg_color=UI["color_warning"], hover_color=UI["color_accent_hover"],
+            height=36, font=ctk.CTkFont(family=UI["fuente"], size=12),
+            fg_color=UI["color_warning"], hover_color=UI["color_accent_hover"],
             state="disabled"
         )
         self._btn_activar.pack(fill="x", pady=(0, 5))
@@ -179,7 +180,7 @@ class UsuariosView(ctk.CTkFrame):
         ctk.CTkButton(
             btn_frame, text="✕ Limpiar",
             command=self._limpiar,
-            height=36, fg_color="transparent",
+            height=36, font=ctk.CTkFont(family=UI["fuente"], size=12), fg_color="transparent",
             border_color=UI["color_border"], border_width=1,
             text_color=UI["color_muted"], hover_color=UI["color_bg"]
         ).pack(fill="x")

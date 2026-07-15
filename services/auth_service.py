@@ -52,7 +52,7 @@ PERMISOS = {
 
     # --- Reportes ---
     "reportes_ver":         [1, 2, 3],      # Romana ve reportes básicos
-    "reportes_exportar":    [1, 2],         # Admin y supervisor exportan
+    "reportes_exportar":    [1, 2, 3],      # Romana también exporta (necesita el ticket/factura)
 
     # --- Administración ---
     "admin_usuarios":       [1],            # Solo admin gestiona usuarios

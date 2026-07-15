@@ -162,7 +162,7 @@ class Sidebar(ctk.CTkFrame):
             ctk.CTkLabel(
                 usuario_row,
                 text=simbolo,
-                font=ctk.CTkFont(size=18),
+                font=ctk.CTkFont(family=UI["fuente"], size=18),
                 text_color=color_rol,
                 width=28
             ).grid(row=0, column=0, rowspan=2)

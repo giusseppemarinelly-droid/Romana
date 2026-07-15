@@ -46,7 +46,7 @@ class VehiculosView(ctk.CTkFrame):
 
         ctk.CTkLabel(
             header, text="🚛 VEHÍCULOS",
-            font=ctk.CTkFont(size=15, weight="bold"),
+            font=ctk.CTkFont(family=UI["fuente"], size=15, weight="bold"),
             text_color=UI["color_accent"]
         ).pack(side="left")
 
@@ -54,13 +54,14 @@ class VehiculosView(ctk.CTkFrame):
             header, text="+ Nuevo",
             command=self._nuevo,
             height=32, width=90,
+            font=ctk.CTkFont(family=UI["fuente"], size=12),
             fg_color=UI["color_accent"], hover_color=UI["color_accent_hover"]
         ).pack(side="right")
 
         # Búsqueda
         self._entry_buscar = ctk.CTkEntry(
             left, placeholder_text="🔍 Buscar por placa o descripción...",
-            height=35, font=ctk.CTkFont(size=12)
+            height=35, font=ctk.CTkFont(family=UI["fuente"], size=12)
         )
         self._entry_buscar.grid(row=1, column=0, sticky="ew", padx=15, pady=(0, 5))
         self._entry_buscar.bind("<KeyRelease>", lambda e: self._on_tecla_buscar())
@@ -72,11 +73,11 @@ class VehiculosView(ctk.CTkFrame):
             foreground=UI["color_text"],
             fieldbackground=UI["color_card"],
             rowheight=26,
-            font=("Helvetica", 11))
+            font=("Segoe UI", 11))
         style.configure("Veh.Treeview.Heading",
             background=UI["color_bg"],
             foreground=UI["color_text"],
-            font=("Helvetica", 10, "bold"))
+            font=("Segoe UI", 10, "bold"))
         style.map("Veh.Treeview",
             background=[("selected", "#E0F2FE")],
             foreground=[("selected", "#1E3A8A")])
@@ -114,7 +115,7 @@ class VehiculosView(ctk.CTkFrame):
 
         ctk.CTkLabel(
             right, text="📝 Datos del Vehículo",
-            font=ctk.CTkFont(size=14, weight="bold"),
+            font=ctk.CTkFont(family=UI["fuente"], size=14, weight="bold"),
             text_color=UI["color_text"]
         ).pack(padx=18, pady=(15, 10), anchor="w")
 
@@ -133,12 +134,12 @@ class VehiculosView(ctk.CTkFrame):
         # Proveedor -- el combo arranca con un solo valor y se completa
         # cuando llega la lista real (_cargar_proveedores), en vez de
         # bloquear la construcción de la pantalla esperando al backend.
-        ctk.CTkLabel(right, text="Proveedor", font=ctk.CTkFont(size=11),
+        ctk.CTkLabel(right, text="Proveedor", font=ctk.CTkFont(family=UI["fuente"], size=11),
                      text_color=UI["color_muted"], anchor="w").pack(fill="x", padx=18, pady=(0, 2))
         self._proveedores_lista = []
 
         self._f_proveedor = ctk.CTkComboBox(
-            right, values=["-- Sin proveedor --"], height=35, font=ctk.CTkFont(size=12))
+            right, values=["-- Sin proveedor --"], height=35, font=ctk.CTkFont(family=UI["fuente"], size=12))
         self._f_proveedor.pack(fill="x", padx=18, pady=(0, 12))
         self._f_proveedor.set("-- Sin proveedor --")
         self._cargar_proveedores()
@@ -151,7 +152,7 @@ class VehiculosView(ctk.CTkFrame):
             btn_frame, text="💾 Guardar",
             command=self._guardar, height=40,
             fg_color=UI["color_success"], hover_color=UI["color_success_hover"],
-            font=ctk.CTkFont(size=13, weight="bold")
+            font=ctk.CTkFont(family=UI["fuente"], size=13, weight="bold")
         )
         self._btn_guardar.pack(fill="x", pady=(0, 5))
 
@@ -160,7 +161,7 @@ class VehiculosView(ctk.CTkFrame):
                 btn_frame, text="🚫 Desactivar",
                 command=self._desactivar, height=36,
                 fg_color=UI["color_danger"], hover_color=UI["color_danger_hover"],
-                font=ctk.CTkFont(size=12),
+                font=ctk.CTkFont(family=UI["fuente"], size=12),
                 state="disabled"
             )
             self._btn_desactivar.pack(fill="x", pady=(0, 5))
@@ -168,23 +169,24 @@ class VehiculosView(ctk.CTkFrame):
         ctk.CTkButton(
             btn_frame, text="✕ Limpiar",
             command=self._limpiar, height=36,
+            font=ctk.CTkFont(family=UI["fuente"], size=12),
             fg_color="transparent", border_color=UI["color_border"],
             border_width=1, text_color=UI["color_muted"], hover_color=UI["color_bg"]
         ).pack(fill="x")
 
     def _campo(self, parent, etiqueta):
         """Crea un campo de entrada estándar."""
-        ctk.CTkLabel(parent, text=etiqueta, font=ctk.CTkFont(size=11),
+        ctk.CTkLabel(parent, text=etiqueta, font=ctk.CTkFont(family=UI["fuente"], size=11),
                      text_color=UI["color_muted"], anchor="w").pack(fill="x", padx=18, pady=(0, 2))
-        entry = ctk.CTkEntry(parent, height=35, font=ctk.CTkFont(size=12))
+        entry = ctk.CTkEntry(parent, height=35, font=ctk.CTkFont(family=UI["fuente"], size=12))
         entry.pack(fill="x", padx=18, pady=(0, 10))
         return entry
 
     def _combo_campo(self, parent, etiqueta, valores):
         """Crea un combo estándar."""
-        ctk.CTkLabel(parent, text=etiqueta, font=ctk.CTkFont(size=11),
+        ctk.CTkLabel(parent, text=etiqueta, font=ctk.CTkFont(family=UI["fuente"], size=11),
                      text_color=UI["color_muted"], anchor="w").pack(fill="x", padx=18, pady=(0, 2))
-        combo = ctk.CTkComboBox(parent, values=valores, height=35, font=ctk.CTkFont(size=12))
+        combo = ctk.CTkComboBox(parent, values=valores, height=35, font=ctk.CTkFont(family=UI["fuente"], size=12))
         combo.pack(fill="x", padx=18, pady=(0, 10))
         combo.set(valores[0])
         return combo

@@ -73,7 +73,7 @@ class ConfiguracionView(ctk.CTkFrame):
             text="💾 Guardar Configuración",
             command=self._guardar,
             height=48,
-            font=ctk.CTkFont(size=14, weight="bold"),
+            font=ctk.CTkFont(family=UI["fuente"], size=14, weight="bold"),
             fg_color=UI["color_success"],
             hover_color=UI["color_success_hover"],
             corner_radius=10
@@ -84,7 +84,7 @@ class ConfiguracionView(ctk.CTkFrame):
         ctk.CTkLabel(
             parent,
             text=titulo,
-            font=ctk.CTkFont(size=13, weight="bold"),
+            font=ctk.CTkFont(family=UI["fuente"], size=13, weight="bold"),
             text_color=UI["color_accent"]
         ).grid(row=row, column=col, padx=15, pady=(15, 5), sticky="w")
 
@@ -102,11 +102,11 @@ class ConfiguracionView(ctk.CTkFrame):
 
             ctk.CTkLabel(
                 frame, text=etiqueta,
-                font=ctk.CTkFont(size=11),
+                font=ctk.CTkFont(family=UI["fuente"], size=11),
                 text_color=UI["color_muted"], anchor="w"
             ).pack(fill="x", padx=12, pady=(8, 2))
 
-            entry = ctk.CTkEntry(frame, height=35, font=ctk.CTkFont(size=12))
+            entry = ctk.CTkEntry(frame, height=35, font=ctk.CTkFont(family=UI["fuente"], size=12))
             entry.pack(fill="x", padx=12, pady=(0, 8))
 
             self._campos[clave] = entry

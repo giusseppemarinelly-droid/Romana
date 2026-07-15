@@ -86,12 +86,12 @@ class DashboardView(ctk.CTkFrame):
 
             ctk.CTkLabel(
                 card, text=icono,
-                font=ctk.CTkFont(size=28)
+                font=ctk.CTkFont(family=UI["fuente"], size=28)
             ).pack(anchor="w", padx=18, pady=(15, 0))
 
             lbl_valor = ctk.CTkLabel(
                 card, text="…",
-                font=ctk.CTkFont(size=26, weight="bold"),
+                font=ctk.CTkFont(family=UI["fuente"], size=26, weight="bold"),
                 text_color=color
             )
             lbl_valor.pack(anchor="w", padx=18)
@@ -99,7 +99,7 @@ class DashboardView(ctk.CTkFrame):
 
             ctk.CTkLabel(
                 card, text=titulo,
-                font=ctk.CTkFont(size=11),
+                font=ctk.CTkFont(family=UI["fuente"], size=11),
                 text_color=UI["color_muted"]
             ).pack(anchor="w", padx=18, pady=(0, 15))
 
@@ -121,7 +121,7 @@ class DashboardView(ctk.CTkFrame):
         self._lista_placeholder.grid(row=0, column=1, sticky="nsew", pady=10)
         ctk.CTkLabel(
             self._lista_placeholder, text="Cargando…",
-            font=ctk.CTkFont(size=13), text_color=UI["color_muted"]
+            font=ctk.CTkFont(family=UI["fuente"], size=13), text_color=UI["color_muted"]
         ).pack(expand=True, pady=40)
 
         self._cargar_datos()
@@ -175,7 +175,7 @@ class DashboardView(ctk.CTkFrame):
 
         ctk.CTkLabel(
             frame, text="⚡ Accesos Rápidos",
-            font=ctk.CTkFont(size=14, weight="bold"),
+            font=ctk.CTkFont(family=UI["fuente"], size=14, weight="bold"),
             text_color=UI["color_text"]
         ).pack(anchor="w", padx=18, pady=(15, 10))
 
@@ -243,7 +243,7 @@ class DashboardView(ctk.CTkFrame):
         ctk.CTkLabel(
             header,
             text=f"🚛 Camiones en Planta ({len(pendientes)})",
-            font=ctk.CTkFont(size=14, weight="bold"),
+            font=ctk.CTkFont(family=UI["fuente"], size=14, weight="bold"),
             text_color=UI["color_text"]
         ).pack(side="left")
 
@@ -252,7 +252,7 @@ class DashboardView(ctk.CTkFrame):
             text="↻ Actualizar",
             width=90,
             height=28,
-            font=ctk.CTkFont(size=11),
+            font=ctk.CTkFont(family=UI["fuente"], size=11),
             command=self._refrescar,
             fg_color=UI["color_accent"],
             hover_color=UI["color_accent_hover"]
@@ -271,7 +271,7 @@ class DashboardView(ctk.CTkFrame):
         ]:
             ctk.CTkLabel(
                 cols_frame, text=texto,
-                font=ctk.CTkFont(size=10, weight="bold"),
+                font=ctk.CTkFont(family=UI["fuente"], size=10, weight="bold"),
                 text_color=UI["color_muted"],
                 width=ancho, anchor="w"
             ).grid(row=0, column=col, padx=8, pady=5, sticky="w")
@@ -286,7 +286,7 @@ class DashboardView(ctk.CTkFrame):
             ctk.CTkLabel(
                 scroll,
                 text="✅ No hay camiones en planta",
-                font=ctk.CTkFont(size=13),
+                font=ctk.CTkFont(family=UI["fuente"], size=13),
                 text_color=UI["color_muted"]
             ).pack(pady=30)
         else:
@@ -307,7 +307,7 @@ class DashboardView(ctk.CTkFrame):
                 for col, (dato, ancho) in enumerate(zip(datos, anchos)):
                     ctk.CTkLabel(
                         fila, text=dato,
-                        font=ctk.CTkFont(size=12),
+                        font=ctk.CTkFont(family=UI["fuente"], size=12),
                         text_color=UI["color_text"],
                         width=ancho, anchor="w"
                     ).grid(row=0, column=col, padx=8, pady=6, sticky="w")
@@ -318,7 +318,7 @@ class DashboardView(ctk.CTkFrame):
                     text="↑ Salida",
                     width=70,
                     height=26,
-                    font=ctk.CTkFont(size=11),
+                    font=ctk.CTkFont(family=UI["fuente"], size=11),
                     command=lambda: self.callback_navegar("pesaje_salida"),
                     fg_color=UI["color_success"],
                     hover_color=UI["color_success_hover"]

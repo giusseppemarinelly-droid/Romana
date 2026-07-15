@@ -38,8 +38,8 @@ class ProductosView(ctk.CTkFrame):
 
         header = ctk.CTkFrame(left, fg_color="transparent")
         header.grid(row=0, column=0, sticky="ew", padx=15, pady=(15,5))
-        ctk.CTkLabel(header, text="📦 PRODUCTOS", font=ctk.CTkFont(size=15,weight="bold"), text_color=UI["color_accent"]).pack(side="left")
-        ctk.CTkButton(header, text="+ Nuevo", command=self._nuevo, height=32, width=90, fg_color=UI["color_accent"], hover_color=UI["color_accent_hover"]).pack(side="right")
+        ctk.CTkLabel(header, text="📦 PRODUCTOS", font=ctk.CTkFont(family=UI["fuente"], size=15,weight="bold"), text_color=UI["color_accent"]).pack(side="left")
+        ctk.CTkButton(header, text="+ Nuevo", command=self._nuevo, height=32, width=90, font=ctk.CTkFont(family=UI["fuente"], size=12), fg_color=UI["color_accent"], hover_color=UI["color_accent_hover"]).pack(side="right")
 
         self._entry_buscar = ctk.CTkEntry(left, placeholder_text="🔍 Buscar...", height=35)
         self._entry_buscar.grid(row=1, column=0, sticky="ew", padx=15, pady=(0,5))
@@ -51,11 +51,11 @@ class ProductosView(ctk.CTkFrame):
             foreground=UI["color_text"],
             fieldbackground=UI["color_card"],
             rowheight=26,
-            font=("Helvetica",11))
+            font=("Segoe UI",11))
         style.configure("Prod.Treeview.Heading",
             background=UI["color_bg"],
             foreground=UI["color_text"],
-            font=("Helvetica",10,"bold"))
+            font=("Segoe UI",10,"bold"))
         style.map("Prod.Treeview",
             background=[("selected","#E0F2FE")],
             foreground=[("selected","#1E3A8A")])
@@ -79,31 +79,31 @@ class ProductosView(ctk.CTkFrame):
         )
         right.grid(row=0, column=1, sticky="nsew", padx=(10,20), pady=20)
 
-        ctk.CTkLabel(right, text="📝 Datos del Producto", font=ctk.CTkFont(size=14,weight="bold"), text_color=UI["color_text"]).pack(padx=18, pady=(15,10), anchor="w")
+        ctk.CTkLabel(right, text="📝 Datos del Producto", font=ctk.CTkFont(family=UI["fuente"], size=14,weight="bold"), text_color=UI["color_text"]).pack(padx=18, pady=(15,10), anchor="w")
         ctk.CTkFrame(right, height=1, fg_color=UI["color_border"]).pack(fill="x", padx=15, pady=(0,15))
 
         self._f_codigo = self._campo(right, "Código *")
         self._f_nombre = self._campo(right, "Nombre *")
 
-        ctk.CTkLabel(right, text="Unidad", font=ctk.CTkFont(size=11), text_color=UI["color_muted"], anchor="w").pack(fill="x", padx=18, pady=(0,2))
+        ctk.CTkLabel(right, text="Unidad", font=ctk.CTkFont(family=UI["fuente"], size=11), text_color=UI["color_muted"], anchor="w").pack(fill="x", padx=18, pady=(0,2))
         self._f_unidad = ctk.CTkComboBox(right, values=["KG","TN","LB","G"], height=35)
         self._f_unidad.pack(fill="x", padx=18, pady=(0,10))
         self._f_unidad.set("KG")
 
-        ctk.CTkLabel(right, text="Descripción", font=ctk.CTkFont(size=11), text_color=UI["color_muted"], anchor="w").pack(fill="x", padx=18, pady=(0,2))
-        self._f_desc = ctk.CTkTextbox(right, height=70, font=ctk.CTkFont(size=12))
+        ctk.CTkLabel(right, text="Descripción", font=ctk.CTkFont(family=UI["fuente"], size=11), text_color=UI["color_muted"], anchor="w").pack(fill="x", padx=18, pady=(0,2))
+        self._f_desc = ctk.CTkTextbox(right, height=70, font=ctk.CTkFont(family=UI["fuente"], size=12))
         self._f_desc.pack(fill="x", padx=18, pady=(0,12))
 
         btn = ctk.CTkFrame(right, fg_color="transparent")
         btn.pack(fill="x", padx=18, pady=10)
-        ctk.CTkButton(btn, text="💾 Guardar", command=self._guardar, height=40, fg_color=UI["color_success"], hover_color=UI["color_success_hover"]).pack(fill="x", pady=(0,5))
-        self._btn_desact = ctk.CTkButton(btn, text="🚫 Desactivar", command=self._desactivar, height=36, fg_color=UI["color_danger"], hover_color=UI["color_danger_hover"], state="disabled")
+        ctk.CTkButton(btn, text="💾 Guardar", command=self._guardar, height=40, font=ctk.CTkFont(family=UI["fuente"], size=13, weight="bold"), fg_color=UI["color_success"], hover_color=UI["color_success_hover"]).pack(fill="x", pady=(0,5))
+        self._btn_desact = ctk.CTkButton(btn, text="🚫 Desactivar", command=self._desactivar, height=36, font=ctk.CTkFont(family=UI["fuente"], size=12), fg_color=UI["color_danger"], hover_color=UI["color_danger_hover"], state="disabled")
         self._btn_desact.pack(fill="x", pady=(0,5))
-        ctk.CTkButton(btn, text="✕ Limpiar", command=self._limpiar, height=36, fg_color="transparent", border_color=UI["color_border"], border_width=1, text_color=UI["color_muted"], hover_color=UI["color_bg"]).pack(fill="x")
+        ctk.CTkButton(btn, text="✕ Limpiar", command=self._limpiar, height=36, font=ctk.CTkFont(family=UI["fuente"], size=12), fg_color="transparent", border_color=UI["color_border"], border_width=1, text_color=UI["color_muted"], hover_color=UI["color_bg"]).pack(fill="x")
 
     def _campo(self, parent, etiqueta):
-        ctk.CTkLabel(parent, text=etiqueta, font=ctk.CTkFont(size=11), text_color=UI["color_muted"], anchor="w").pack(fill="x", padx=18, pady=(0,2))
-        entry = ctk.CTkEntry(parent, height=35, font=ctk.CTkFont(size=12))
+        ctk.CTkLabel(parent, text=etiqueta, font=ctk.CTkFont(family=UI["fuente"], size=11), text_color=UI["color_muted"], anchor="w").pack(fill="x", padx=18, pady=(0,2))
+        entry = ctk.CTkEntry(parent, height=35, font=ctk.CTkFont(family=UI["fuente"], size=12))
         entry.pack(fill="x", padx=18, pady=(0,10))
         return entry
 

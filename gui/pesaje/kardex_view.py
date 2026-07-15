@@ -56,12 +56,12 @@ class KardexView(ctk.CTkFrame):
 
         ctk.CTkLabel(
             filtros, text="📋 KARDEX DE PESADAS",
-            font=ctk.CTkFont(size=15, weight="bold"),
+            font=ctk.CTkFont(family=UI["fuente"], size=15, weight="bold"),
             text_color=UI["color_accent"]
         ).grid(row=0, column=0, padx=15, pady=(12, 5), sticky="w", columnspan=8)
 
         # Fechas
-        ctk.CTkLabel(filtros, text="Desde:", font=ctk.CTkFont(size=11),
+        ctk.CTkLabel(filtros, text="Desde:", font=ctk.CTkFont(family=UI["fuente"], size=11),
                      text_color=UI["color_text"]).grid(row=1, column=0, padx=(15, 2), pady=10)
 
         hoy = datetime.now()
@@ -72,7 +72,7 @@ class KardexView(ctk.CTkFrame):
         self._entry_desde.grid(row=1, column=1, padx=(0, 10))
         self._entry_desde.insert(0, inicio.strftime("%d/%m/%Y"))
 
-        ctk.CTkLabel(filtros, text="Hasta:", font=ctk.CTkFont(size=11),
+        ctk.CTkLabel(filtros, text="Hasta:", font=ctk.CTkFont(family=UI["fuente"], size=11),
                      text_color=UI["color_text"]).grid(row=1, column=2, padx=(0, 2))
 
         self._entry_hasta = ctk.CTkEntry(filtros, width=110, height=32,
@@ -81,7 +81,7 @@ class KardexView(ctk.CTkFrame):
         self._entry_hasta.insert(0, hoy.strftime("%d/%m/%Y"))
 
         # Estado
-        ctk.CTkLabel(filtros, text="Estado:", font=ctk.CTkFont(size=11),
+        ctk.CTkLabel(filtros, text="Estado:", font=ctk.CTkFont(family=UI["fuente"], size=11),
                      text_color=UI["color_text"]).grid(row=1, column=4, padx=(0, 2))
 
         self._combo_estado = ctk.CTkComboBox(
@@ -96,19 +96,30 @@ class KardexView(ctk.CTkFrame):
             height=32, width=100, fg_color=UI["color_accent"], hover_color=UI["color_accent_hover"]
         ).grid(row=1, column=6, padx=(0, 5))
 
-        # Exportar (PDF/Excel) requiere "reportes_exportar" (niveles 1-2) —
-        # el backend ya lo exige; acá se oculta el botón en vez de dejar
-        # que el operador se tope con un error 403 al hacer clic.
+        # Atajo del reporte de fin de día: pone Desde=Hasta=hoy y filtra
+        # directo, en vez de que el operador tenga que escribir la fecha
+        # a mano para ver "todos los camiones que pasaron hoy".
+        ctk.CTkButton(
+            filtros, text="📅 Hoy", command=self._filtrar_hoy,
+            height=32, width=80, fg_color="transparent",
+            border_color=UI["color_accent"], border_width=1,
+            text_color=UI["color_accent"], hover_color=UI["color_bg"],
+            font=ctk.CTkFont(family=UI["fuente"], size=12)
+        ).grid(row=1, column=7, padx=(0, 5))
+
+        # Exportar (PDF/Excel) requiere "reportes_exportar" — el backend
+        # ya lo exige; acá se oculta el botón en vez de dejar que el
+        # usuario se tope con un error 403 al hacer clic.
         if api_client.tiene_permiso("reportes_exportar"):
             ctk.CTkButton(
                 filtros, text="PDF", command=self._exportar_pdf,
                 height=32, width=70, fg_color=UI["color_danger"], hover_color=UI["color_danger_hover"]
-            ).grid(row=1, column=7, padx=(0, 5))
+            ).grid(row=1, column=8, padx=(0, 5))
 
             ctk.CTkButton(
                 filtros, text="Excel", command=self._exportar_excel,
                 height=32, width=80, fg_color=UI["color_success"], hover_color=UI["color_success_hover"]
-            ).grid(row=1, column=8, padx=(0, 15), pady=10)
+            ).grid(row=1, column=9, padx=(0, 15), pady=10)
 
         # ---- Tabla de resultados ----
         tabla_frame = ctk.CTkFrame(
@@ -125,7 +136,7 @@ class KardexView(ctk.CTkFrame):
         # Etiqueta de conteo
         self._lbl_count = ctk.CTkLabel(
             tabla_frame, text="0 registros",
-            font=ctk.CTkFont(size=11), text_color=UI["color_muted"]
+            font=ctk.CTkFont(family=UI["fuente"], size=11), text_color=UI["color_muted"]
         )
         self._lbl_count.grid(row=0, column=0, padx=15, pady=(10, 5), sticky="w")
 
@@ -137,12 +148,12 @@ class KardexView(ctk.CTkFrame):
             foreground=UI["color_text"],
             fieldbackground=UI["color_card"],
             rowheight=28,
-            font=("Helvetica", 11)
+            font=("Segoe UI", 11)
         )
         style.configure("Kardex.Treeview.Heading",
             background=UI["color_bg"],
             foreground=UI["color_text"],
-            font=("Helvetica", 10, "bold")
+            font=("Segoe UI", 10, "bold")
         )
         style.map("Kardex.Treeview",
             background=[("selected", "#E0F2FE")],
@@ -188,10 +199,19 @@ class KardexView(ctk.CTkFrame):
         # Etiqueta de totales
         self._lbl_total = ctk.CTkLabel(
             tabla_frame, text="Total Neto: 0.00 KG",
-            font=ctk.CTkFont(size=12, weight="bold"),
+            font=ctk.CTkFont(family=UI["fuente"], size=12, weight="bold"),
             text_color=UI["color_success"]
         )
         self._lbl_total.grid(row=3, column=0, padx=15, pady=10, sticky="e")
+
+    def _filtrar_hoy(self):
+        """Pone Desde y Hasta en la fecha de hoy y busca — reporte del día."""
+        hoy_str = datetime.now().strftime("%d/%m/%Y")
+        self._entry_desde.delete(0, "end")
+        self._entry_desde.insert(0, hoy_str)
+        self._entry_hasta.delete(0, "end")
+        self._entry_hasta.insert(0, hoy_str)
+        self._buscar()
 
     def _buscar(self):
         """Ejecuta la búsqueda con los filtros actuales."""

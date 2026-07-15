@@ -288,7 +288,7 @@ class App(ctk.CTk):
                 ctk.CTkLabel(
                     frame,
                     text=f"🚧 Módulo '{destino}' en construcción",
-                    font=ctk.CTkFont(size=20)
+                    font=ctk.CTkFont(family=UI["fuente"], size=20)
                 ).pack(expand=True)
                 return frame
 
@@ -298,7 +298,7 @@ class App(ctk.CTk):
             ctk.CTkLabel(
                 frame,
                 text=f"❌ Error al cargar pantalla '{destino}':\n{str(e)}",
-                font=ctk.CTkFont(size=14),
+                font=ctk.CTkFont(family=UI["fuente"], size=14),
                 text_color="#FF6B6B"
             ).pack(expand=True, padx=20, pady=20)
             import traceback

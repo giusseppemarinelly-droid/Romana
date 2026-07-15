@@ -47,7 +47,7 @@ class LoginView(ctk.CTkFrame):
         ctk.CTkLabel(
             centro,
             text="⚖",
-            font=ctk.CTkFont(size=80),
+            font=ctk.CTkFont(family=UI["fuente"], size=80),
             text_color="#FFFFFF"
         ).pack(pady=(0, 16))
 
