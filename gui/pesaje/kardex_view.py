@@ -133,12 +133,26 @@ class KardexView(ctk.CTkFrame):
         tabla_frame.grid_rowconfigure(1, weight=1)
         tabla_frame.grid_columnconfigure(0, weight=1)
 
-        # Etiqueta de conteo
+        # Etiqueta de conteo + botón de ticket individual
+        header_tabla = ctk.CTkFrame(tabla_frame, fg_color="transparent")
+        header_tabla.grid(row=0, column=0, columnspan=2, sticky="ew", padx=15, pady=(10, 5))
+        header_tabla.grid_columnconfigure(0, weight=1)
+
         self._lbl_count = ctk.CTkLabel(
-            tabla_frame, text="0 registros",
+            header_tabla, text="0 registros",
             font=ctk.CTkFont(family=UI["fuente"], size=11), text_color=UI["color_muted"]
         )
-        self._lbl_count.grid(row=0, column=0, padx=15, pady=(10, 5), sticky="w")
+        self._lbl_count.grid(row=0, column=0, sticky="w")
+
+        # Ver/descargar el ticket de una pesada puntual (no todo el
+        # kardex) -- antes solo se podía exportar la lista completa en
+        # PDF/Excel, no bajar el ticket de un camión específico.
+        ctk.CTkButton(
+            header_tabla, text="🎫 Ver Ticket", command=self._ver_ticket,
+            height=28, width=110, fg_color=UI["color_accent"],
+            hover_color=UI["color_accent_hover"],
+            font=ctk.CTkFont(family=UI["fuente"], size=11)
+        ).grid(row=0, column=1, sticky="e")
 
         # Tabla (usando ttk.Treeview que funciona dentro de tkinter)
         style = ttk.Style()
@@ -257,7 +271,7 @@ class KardexView(ctk.CTkFrame):
             total_neto += neto
 
             tag = "par" if i % 2 == 0 else "impar"
-            self._tree.insert("", "end", values=(
+            self._tree.insert("", "end", iid=str(p["id"]), values=(
                 p["numero_ticket"],
                 _fecha_hora(p["fecha_entrada"]),
                 p["vehiculo"]["placa"] if p["vehiculo"] else "—",
@@ -281,6 +295,35 @@ class KardexView(ctk.CTkFrame):
         with open(ruta, "wb") as f:
             f.write(contenido)
         return ruta
+
+    def _ver_ticket(self):
+        """Descarga y abre el ticket de la pesada seleccionada en la
+        tabla (no todo el kardex) -- antes solo se podía exportar la
+        lista completa en PDF/Excel, no bajar el ticket de un camión
+        específico."""
+        sel = self._tree.selection()
+        if not sel:
+            messagebox.showwarning("Ver Ticket", "Seleccione una pesada de la tabla primero.")
+            return
+
+        pesada_id = int(sel[0])
+        pesada = next((p for p in self._pesadas if p["id"] == pesada_id), None)
+        if not pesada:
+            return
+
+        try:
+            contenido = api_client.descargar_ticket_pdf(pesada_id)
+            ruta = self._guardar_y_abrir(contenido, f"TICKET_{pesada['numero_ticket']}.pdf")
+            if messagebox.askyesno(
+                "Ticket generado",
+                f"Ticket {pesada['numero_ticket']}\n"
+                f"Placa: {pesada['vehiculo']['placa'] if pesada['vehiculo'] else '—'}\n"
+                f"Neto: {float(pesada['peso_neto'] or 0):,.0f} KG\n\n"
+                "¿Abrir el archivo?"
+            ):
+                os.startfile(ruta)
+        except (ApiError, OSError) as e:
+            messagebox.showerror("Error", f"Error al generar el ticket: {e}")
 
     def _exportar_pdf(self):
         if not self._pesadas:
