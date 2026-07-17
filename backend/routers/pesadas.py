@@ -105,7 +105,7 @@ async def listar_en_planta():
     return await run_in_threadpool(pesaje_service.listar_pesadas_en_planta)
 
 
-@router.get("/pendientes-aprobacion", response_model=list[PesadaOut], dependencies=[Depends(requiere_permiso("centro_costos"))])
+@router.get("/pendientes-aprobacion", response_model=list[PesadaOut], dependencies=[Depends(requiere_permiso("pesaje_ver_pendientes_cc"))])
 async def listar_pendientes():
     return await run_in_threadpool(pesaje_service.listar_pendientes_aprobacion)
 

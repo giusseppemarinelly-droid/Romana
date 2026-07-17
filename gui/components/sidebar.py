@@ -31,6 +31,7 @@ class Sidebar(ctk.CTkFrame):
         ("Vehículos",   "vehiculos",   "maestros_ver", "🚛"),
         ("Conductores", "conductores", "maestros_ver", "👤"),
         ("Proveedores", "proveedores", "maestros_ver", "🏭"),
+        ("Transportistas", "empresas_transportistas", "maestros_ver", "🚚"),
         ("Productos",   "productos",   "maestros_ver", "📦"),
         ("Destinos",    "destinos",    "maestros_ver", "📍"),
 

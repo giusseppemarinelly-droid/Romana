@@ -168,8 +168,8 @@ class App(ctk.CTk):
             destino: Nombre de la pantalla.
                      Valores válidos: "dashboard", "pesaje_entrada",
                      "pesaje_salida", "kardex", "vehiculos",
-                     "conductores", "proveedores", "productos",
-                     "destinos", "usuarios", "configuracion"
+                     "conductores", "proveedores", "empresas_transportistas",
+                     "productos", "destinos", "usuarios", "configuracion"
         """
         if not self._content_frame:
             return
@@ -203,6 +203,7 @@ class App(ctk.CTk):
             "vehiculos":         "🚛 Vehículos",
             "conductores":       "👤 Conductores",
             "proveedores":       "🏭 Proveedores",
+            "empresas_transportistas": "🚚 Empresas Transportistas",
             "productos":         "📦 Productos",
             "destinos":          "📍 Destinos",
             "lotes":             "🗂 Lotes",
@@ -265,6 +266,10 @@ class App(ctk.CTk):
             elif destino == "proveedores":
                 from gui.maestros.proveedores_view import ProveedoresView
                 return ProveedoresView(parent)
+
+            elif destino == "empresas_transportistas":
+                from gui.maestros.empresas_transportistas_view import EmpresasTransportistasView
+                return EmpresasTransportistasView(parent)
 
             elif destino == "productos":
                 from gui.maestros.productos_view import ProductosView

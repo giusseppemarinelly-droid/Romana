@@ -30,11 +30,19 @@ El modelo central es `Pesada` (`database/models.py`), con estados explícitos:
 en_planta -> pendiente_aprobacion -> aprobado/rechazado -> completado   (+ anulado)
 ```
 
-- `en_planta`: camión entró, primer peso capturado, esperando ser cargado.
-- `pendiente_aprobacion`: 2° peso capturado por Romana, esperando aprobación de Centro de Costos.
+- `en_planta`: camión entró, primer peso capturado (Tara), esperando ser cargado.
+- `pendiente_aprobacion`: 2° peso capturado por Romana (pre-pesaje, camión cargado), esperando aprobación de Centro de Costos.
 - `aprobado` / `rechazado`: decisión de Centro de Costos; si rechaza, vuelve a capturar peso.
-- `completado`: datos finales llenados, proceso cerrado — **inmutable, ni siquiera se puede anular**.
+- `completado`: Romana captura el **peso final** (3er pesaje, `Pesada.peso_final`) y llena los datos finales, proceso cerrado — **inmutable, ni siquiera se puede anular**.
 - `anulado`: cancelado por cualquier motivo (excepto desde `completado`).
+
+### Los tres pesajes (entrada, pre-pesaje, peso final)
+
+Además de los dos pesos que definen el neto (`peso_bruto`/`peso_tara`, calculados en `capturar_peso_salida`), la pesada tiene un **tercer pesaje** (`peso_final`), capturado por Romana en la pantalla "Completar Pesaje" — **después** de que Centro de Costos aprueba, justo antes de autorizar la salida física del camión. Sirve para verificar que nada cambió mientras CC revisaba y Facturación preparaba la factura en paralelo.
+
+`peso_final` se registra **sin bloqueo de tolerancia** contra el pre-pesaje — es un control informativo (`completar_pesaje()` en `services/pesaje_service.py` solo exige que sea > 0, no que coincida con nada). La captura en la GUI (`gui/pesaje/completar_pesaje_view.py`) es explícita: hay un botón "⚖ CAPTURAR PESO FINAL" que hay que apretar para fijar el valor mostrado — `_completar()` no lee la báscula en silencio al guardar, usa el valor ya confirmado (mismo criterio que "Salida/Capturar"). El campo es opcional a nivel de modelo (`nullable=True`) porque las pesadas completadas antes de este feature no lo tienen — tanto el ticket PDF como el reporte lo omiten con gracia cuando es `None`.
+
+Esa misma pantalla también muestra, de solo lectura, la cola de pesadas en `pendiente_aprobacion` (lo que ya se mandó a CC y todavía no tiene respuesta) — usa el permiso `pesaje_ver_pendientes_cc` (niveles 1-2-3-4), separado de `centro_costos` (niveles 1-2-4, el único que puede aprobar/rechazar), para que Romana pueda ver el estado sin poder decidir por CC.
 
 Un vehículo no puede tener 2 pesadas activas a la vez — se aplica con un índice único parcial de Postgres (`ux_pesada_activa_por_vehiculo` en `database/models.py` y la migración homónima), no solo con un chequeo en `services/pesaje_service.py`, para cerrar la condición de carrera bajo escrituras concurrentes.
 
@@ -126,6 +134,8 @@ Centraliza todo: conexión a BD (`DATABASE_URL`, override con `ROMANA_DATABASE_U
 
 La báscula (display Toledo) de la estación Romana se conecta a la PC por **cable serial DB9 (RS-232)** — confirmado por el usuario el 2026-07-14. Coincide con la configuración 8N1 ya implementada en `hardware/display_toledo.py`. Falta probar la conexión real en planta: al hacerlo, verificar en `config.py` → `DISPLAY` que `marca="Toledo"` y que `puerto` apunte al COM correcto (usar Administrador de dispositivos de Windows para identificarlo, especialmente si se usa un adaptador USB-serial en vez de un puerto DB9 nativo).
 
+Para diagnosticar esto sin desconectar el cable de la PC de la Romana (que suele estar en uso), usar `diagnostico_bascula.py` (raíz del repo, standalone, solo necesita `pyserial`) — lista los puertos COM, escucha unos segundos por si el display transmite solo, y prueba el comando estándar Toledo (`W\r\n`) mostrando la respuesta cruda. Si el software anterior (Bigsoft) sigue corriendo y tiene el puerto abierto, hay que cerrarlo primero (el puerto serial es de acceso exclusivo).
+
 ## Notas de sesión (2026-07-15)
 
 - **Consistencia tipográfica en toda la GUI**: la mitad de las pantallas (Dashboard, Kardex, Corte, los 5 Maestros, Usuarios) no fijaban `family=UI["fuente"]` en sus `CTkFont`, así que se veían con la fuente por defecto de CustomTkinter ("Roboto") en vez de Segoe UI como el resto. Corregido en 13 archivos de `gui/`; ver la convención agregada arriba en la sección de GUI.
@@ -134,3 +144,13 @@ La báscula (display Toledo) de la estación Romana se conecta a la PC por **cab
 - **Búsqueda de conductor en Entrada de Camión** (`gui/pesaje/pesaje_entrada_view.py`): el campo Cédula ahora tiene el mismo patrón de búsqueda que Vehículo (botón "🔍 Buscar" contra el maestro de conductores) -- si existe, autocompleta el nombre y guarda `conductor_id` (antes el campo "Nombre del conductor" se tipeaba pero nunca se enviaba al backend, se perdía siempre).
 - Se sembraron datos de simulación en la BD de desarrollo (Postgres local, no parte de este commit): 6 vehículos, 6 conductores y 6 pesadas repartidas en todos los estados de la máquina de estados, para poder probar Dashboard/Kardex/Centro de Costos/Completar Pesaje con datos reales.
 - Empaquetar la GUI como `.exe` con PyInstaller queda pendiente a propósito hasta que el sistema esté técnicamente completo (ver checklist tratada en sesión: falta sobre todo validar la báscula física en planta).
+
+## Notas de sesión (2026-07-17)
+
+- **Tercer pesaje (`peso_final`)**: agregado a `Pesada` (migración `d4e5f6a7b8c9`) y capturado en "Completar Pesaje" con botón explícito "⚖ CAPTURAR PESO FINAL" — ver sección "Los tres pesajes" más arriba. Sin bloqueo de tolerancia contra el pre-pesaje, a pedido del usuario.
+- **Nuevo maestro "Empresas Transportistas"** (`database.models.EmpresaTransportista`, migración `c3d4e5f6a7b8`, tabla `empresas_transportistas`) — mismo patrón CRUD genérico que los demás catálogos (`backend/routers/maestros.py` → `crear_router_maestro`). Pantalla en `gui/maestros/empresas_transportistas_view.py`, ítem de sidebar "Transportistas".
+- **Entrada de Camión ahora asocia por código** tanto Empresa Transportista como Empresa (Cliente/Proveedor) contra sus maestros respectivos (búsqueda + autocompletar, igual patrón que Vehículo/Conductor) — `pesada.empresa_transportista_id` y `pesada.proveedor_id`. Antes de este fix, `proveedor_id` **nunca se enviaba al backend** aunque el servicio ya lo aceptaba: el campo "Empresa (Cliente o Proveedor)" era puro texto libre, desconectado del maestro de Proveedores.
+- **Permiso nuevo `pesaje_ver_pendientes_cc`** (niveles 1-2-3-4, en `services/auth_service.PERMISOS`): permite que Romana vea de solo lectura la cola de `pendiente_aprobacion` en "Completar Pesaje", sin poder aprobar/rechazar (eso sigue siendo exclusivo de `centro_costos`, niveles 1-2-4).
+- **Ticket PDF rediseñado** (`services/reporte_service.generar_ticket_pdf`) para replicar el formato de planilla que ya usaba la empresa con el sistema anterior (fuente Courier, mismas secciones: Cliente/Producto/Chofer/Placa/Transporte/Operación, tabla Tara-Peso Bruto-Peso Final, Precintos, Peso Neto + diferencia %, firmas Romanero/Conductor) — alimentado con los datos reales de `Pesada`, no hardcodeado. La columna "Peso Final" en la tabla de pesos solo aparece si la pesada la tiene (retrocompatible con pesadas completadas antes de este campo).
+- **Fix de layout recurrente**: varias pantallas con dos columnas (formulario ancho + panel angosto de resumen/acciones) se quedaban sin `minsize` en las columnas y sin scroll en el contenido — en monitores de menor resolución el panel angosto quedaba apachurrado contra el borde, o el último campo/botón quedaba tapado sin poder alcanzarlo. Corregido en `pesaje_entrada_view.py`, `pesaje_salida_view.py`, `completar_pesaje_view.py` y `centro_costos_view.py` (minsize en columnas + `CTkScrollableFrame` donde el contenido puede superar la altura disponible). Si se agrega una pantalla nueva con este mismo layout de dos columnas, replicar el patrón desde el arranque.
+- **`diagnostico_bascula.py`** (raíz del repo): script standalone para probar la báscula física sin desconectar el cable de la PC de la Romana — ver sección de conexión física de la báscula más arriba.

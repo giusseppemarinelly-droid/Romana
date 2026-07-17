@@ -117,6 +117,34 @@ class Proveedor(Base):
 
 
 # ============================================================
+# TABLA: empresas_transportistas
+# ============================================================
+class EmpresaTransportista(Base):
+    """
+    Catálogo de empresas transportistas -- mismo propósito que
+    Proveedor (asociar por código en vez de texto libre), pero para el
+    campo "Empresa Transportista" de Entrada de Camión, que antes solo
+    guardaba texto suelto sin vínculo a ningún maestro.
+    """
+    __tablename__ = "empresas_transportistas"
+
+    id         = Column(Integer, primary_key=True, index=True)
+    codigo     = Column(String(20), unique=True, nullable=False)
+    nombre     = Column(String(100), nullable=False)
+    rif        = Column(String(20), nullable=True)
+    direccion  = Column(Text, nullable=True)
+    telefono   = Column(String(20), nullable=True)
+    email      = Column(String(100), nullable=True)
+    activo     = Column(Boolean, default=True)
+    created_at = Column(DateTime, default=datetime.now)
+
+    pesadas    = relationship("Pesada", back_populates="transportista")
+
+    def __repr__(self):
+        return f"<EmpresaTransportista {self.codigo} - {self.nombre}>"
+
+
+# ============================================================
 # TABLA: productos
 # ============================================================
 class Producto(Base):
@@ -235,7 +263,10 @@ class Pesada(Base):
       "pendiente_aprobacion" → 2° peso capturado por Romana, esperando aprobación de CC
       "aprobado"             → Centro de Costos aprobó, Romana puede completar datos
       "rechazado"            → Centro de Costos rechazó, vuelve a capturar peso
-      "completado"           → Datos finales llenados, proceso cerrado
+      "completado"           → 3° peso (peso_final) capturado y datos finales llenados,
+                               proceso cerrado -- el peso_final se registra sin bloqueo
+                               de tolerancia contra el pre-pesaje, es control informativo
+                               antes de autorizar la salida del camión.
       "anulado"              → Cancelado por cualquier motivo
     """
     __tablename__ = "pesadas"
@@ -273,6 +304,7 @@ class Pesada(Base):
     peso_bruto               = Column(Numeric(10, 2), nullable=True)  # Peso entrada
     peso_tara                = Column(Numeric(10, 2), nullable=True)  # Peso salida (2°)
     peso_neto                = Column(Numeric(10, 2), nullable=True)  # Calculado
+    peso_final               = Column(Numeric(10, 2), nullable=True)  # 3° peso, antes de autorizar la salida
 
     # --- Datos de la empresa (texto libre, no FK) ---
     empresa_transportista    = Column(String(150), nullable=True)
@@ -291,6 +323,7 @@ class Pesada(Base):
     conductor_id             = Column(Integer, ForeignKey("conductores.id"),  nullable=True)
     producto_id              = Column(Integer, ForeignKey("productos.id"),    nullable=True)
     proveedor_id             = Column(Integer, ForeignKey("proveedores.id"),  nullable=True)
+    empresa_transportista_id = Column(Integer, ForeignKey("empresas_transportistas.id"), nullable=True)
     destino_id               = Column(Integer, ForeignKey("destinos.id"),     nullable=True)
     lote_id                  = Column(Integer, ForeignKey("lotes.id"),        nullable=True)
     remolque_id              = Column(Integer, ForeignKey("remolques.id"),    nullable=True)
@@ -310,6 +343,7 @@ class Pesada(Base):
     conductor       = relationship("Conductor",   back_populates="pesadas")
     producto        = relationship("Producto",    back_populates="pesadas")
     proveedor       = relationship("Proveedor",   back_populates="pesadas")
+    transportista   = relationship("EmpresaTransportista", back_populates="pesadas")
     destino         = relationship("Destino",     back_populates="pesadas")
     lote            = relationship("Lote",        back_populates="pesadas")
     remolque        = relationship("Remolque",    back_populates="pesadas")

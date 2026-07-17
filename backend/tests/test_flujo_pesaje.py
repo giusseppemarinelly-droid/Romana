@@ -45,17 +45,23 @@ def test_flujo_completo_entrada_a_completado(client, headers_romana, headers_cc,
     r = client.post(f"/api/v1/pesadas/{pesada_id}/aprobar", headers=headers_cc)
     assert r.status_code == 400
 
-    # 5. Romana completa los datos finales — pasa a "completado".
+    # 5. Romana captura el peso final (3er pesaje, antes de autorizar la
+    #    salida) y completa los datos finales — pasa a "completado".
     r = client.post(
         f"/api/v1/pesadas/{pesada_id}/completar",
-        json={"orden_compra": "OC-123", "cantidad": 10000},
+        json={"peso_final": 25000, "orden_compra": "OC-123", "cantidad": 10000},
         headers=headers_romana,
     )
     assert r.status_code == 200, r.text
-    assert r.json()["estado"] == "completado"
+    pesada = r.json()
+    assert pesada["estado"] == "completado"
+    assert pesada["peso_final"] == 25000
 
     # 6. Inmutabilidad: una pesada completada no se puede volver a completar...
-    r = client.post(f"/api/v1/pesadas/{pesada_id}/completar", json={}, headers=headers_romana)
+    r = client.post(
+        f"/api/v1/pesadas/{pesada_id}/completar",
+        json={"peso_final": 25000}, headers=headers_romana,
+    )
     assert r.status_code == 400
 
     # ...ni anular (mandato: registros cerrados son inmutables). Se usa
@@ -97,7 +103,7 @@ def test_permisos_por_nivel_operador_no_puede_aprobar(client, headers_romana, he
     # limpieza: dejar el vehículo libre para no interferir con otros tests
     r = client.post(f"/api/v1/pesadas/{pesada_id}/aprobar", headers=headers_cc)
     assert r.status_code == 200
-    client.post(f"/api/v1/pesadas/{pesada_id}/completar", json={}, headers=headers_romana)
+    client.post(f"/api/v1/pesadas/{pesada_id}/completar", json={"peso_final": 20000}, headers=headers_romana)
 
 
 def test_no_se_puede_registrar_dos_pesadas_activas_para_el_mismo_vehiculo(client, headers_romana, vehiculo_b_id):

@@ -9,6 +9,7 @@ from pydantic import BaseModel, ConfigDict
 from backend.schemas.auth import UsuarioOut
 from backend.schemas.maestros import (
     VehiculoOut, ConductorOut, ProductoOut, ProveedorOut,
+    EmpresaTransportistaOut,
     DestinoOut, LoteOut, RemolqueOut, ContenedorOut,
 )
 
@@ -29,6 +30,7 @@ class PesadaOut(BaseModel):
     peso_bruto: Optional[float] = None
     peso_tara: Optional[float] = None
     peso_neto: Optional[float] = None
+    peso_final: Optional[float] = None
 
     empresa_transportista: Optional[str] = None
     empresa_cliente_proveedor: Optional[str] = None
@@ -46,6 +48,7 @@ class PesadaOut(BaseModel):
     conductor: Optional[ConductorOut] = None
     producto: Optional[ProductoOut] = None
     proveedor: Optional[ProveedorOut] = None
+    transportista: Optional[EmpresaTransportistaOut] = None
     destino: Optional[DestinoOut] = None
     lote: Optional[LoteOut] = None
     remolque: Optional[RemolqueOut] = None
@@ -65,6 +68,7 @@ class EntradaIn(BaseModel):
     conductor_id: Optional[int] = None
     cedula_conductor_libre: str = ""
     proveedor_id: Optional[int] = None
+    empresa_transportista_id: Optional[int] = None
     destino_id: Optional[int] = None
     lote_id: Optional[int] = None
     remolque_id: Optional[int] = None
@@ -81,6 +85,7 @@ class RechazoIn(BaseModel):
 
 
 class CompletarIn(BaseModel):
+    peso_final: float
     orden_compra: str = ""
     cantidad: Optional[float] = None
     precintos: str = ""

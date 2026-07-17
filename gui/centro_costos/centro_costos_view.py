@@ -52,8 +52,11 @@ class CentroCostosView(ctk.CTkFrame):
 
     # ----------------------------------------------------------
     def _construir(self):
-        self.grid_columnconfigure(0, weight=3)
-        self.grid_columnconfigure(1, weight=2)
+        # minsize para que el panel derecho no quede apachurrado contra el
+        # borde en monitores de menor resolución (mismo fix que
+        # pesaje_entrada_view.py / pesaje_salida_view.py).
+        self.grid_columnconfigure(0, weight=3, minsize=420)
+        self.grid_columnconfigure(1, weight=2, minsize=260)
         self.grid_rowconfigure(0, weight=1)
 
         self._construir_lista()

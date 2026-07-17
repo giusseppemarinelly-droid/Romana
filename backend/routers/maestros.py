@@ -2,16 +2,17 @@
 # backend/routers/maestros.py — CRUD + búsqueda indexada
 # ============================================================
 # Resuelve dos cuellos de botella de Bigsoft a la vez:
-#   1. Los 5 módulos de gui/maestros/ hoy saltan la capa de servicios
+#   1. Los módulos de gui/maestros/ hoy saltan la capa de servicios
 #      y acceden a SessionLocal directo — acá se centraliza el acceso.
 #   2. El buscador de conductores/vehículos hoy carga TODA la tabla en
 #      memoria y filtra client-side — acá se reemplaza por `ILIKE`
 #      indexado en Postgres (ver migración Alembic para el índice
 #      pg_trgm sobre placa/documento).
 #
-# Los 5 catálogos maestros comparten el mismo patrón CRUD
+# Los catálogos maestros (vehículos, conductores, proveedores, empresas
+# transportistas, productos, destinos) comparten el mismo patrón CRUD
 # (listar+buscar, obtener, crear, editar, activar/desactivar), así que
-# se generan con una única factory en vez de repetir el código 5 veces.
+# se generan con una única factory en vez de repetir el código N veces.
 
 from typing import Optional, Type
 
@@ -26,12 +27,15 @@ from backend.schemas.maestros import (
     VehiculoOut, VehiculoIn,
     ConductorOut, ConductorIn,
     ProveedorOut, ProveedorIn,
+    EmpresaTransportistaOut, EmpresaTransportistaIn,
     ProductoOut, ProductoIn,
     DestinoOut, DestinoIn,
     ActivoIn,
 )
 from database.engine import SessionLocal
-from database.models import Vehiculo, Conductor, Proveedor, Producto, Destino
+from database.models import (
+    Vehiculo, Conductor, Proveedor, EmpresaTransportista, Producto, Destino
+)
 
 
 def crear_router_maestro(
@@ -174,6 +178,12 @@ router_proveedores = crear_router_maestro(
     columnas_busqueda=["nombre", "codigo"], orden_por="nombre",
 )
 
+router_empresas_transportistas = crear_router_maestro(
+    prefix="/empresas_transportistas", tag="empresas_transportistas", modelo=EmpresaTransportista,
+    schema_out=EmpresaTransportistaOut, schema_in=EmpresaTransportistaIn,
+    columnas_busqueda=["nombre", "codigo"], orden_por="nombre",
+)
+
 router_productos = crear_router_maestro(
     prefix="/productos", tag="productos", modelo=Producto,
     schema_out=ProductoOut, schema_in=ProductoIn,
@@ -188,5 +198,5 @@ router_destinos = crear_router_maestro(
 
 todos_los_routers = [
     router_vehiculos, router_conductores, router_proveedores,
-    router_productos, router_destinos,
+    router_empresas_transportistas, router_productos, router_destinos,
 ]

@@ -39,6 +39,8 @@ class PesajeEntradaView(ctk.CTkFrame):
         self.callback_navegar = callback_navegar
         self._vehiculo_seleccionado = None
         self._conductor_seleccionado = None
+        self._transportista_seleccionada = None
+        self._proveedor_seleccionado = None
         self._productos_cache = []
         self._after_id_peso = None
         self._construir()
@@ -84,8 +86,14 @@ class PesajeEntradaView(ctk.CTkFrame):
         # ── Cuerpo con dos columnas ──────────────────────────
         body = ctk.CTkFrame(self, fg_color="transparent")
         body.grid(row=1, column=0, sticky="nsew", padx=20, pady=5)
-        body.grid_columnconfigure(0, weight=3)
-        body.grid_columnconfigure(1, weight=2)
+        # minsize en la columna del panel derecho (resumen + botón registrar)
+        # para que nunca quede apachurrado contra el borde de la ventana en
+        # monitores de menor resolución que el diseño asumido -- sin esto, el
+        # peso relativo (3:2) igual deja el panel casi invisible cuando el
+        # ancho total disponible es chico.
+        body.grid_columnconfigure(0, weight=3, minsize=420)
+        body.grid_columnconfigure(1, weight=2, minsize=260)
+        body.grid_rowconfigure(0, weight=1)
 
         self._construir_formulario(body)
         self._construir_panel_peso(body)
@@ -93,10 +101,22 @@ class PesajeEntradaView(ctk.CTkFrame):
     # ----------------------------------------------------------
     def _construir_formulario(self, parent):
         """Panel izquierdo — campos del formulario."""
-        card = ctk.CTkFrame(parent, fg_color=UI["color_card"],
-                             border_color=UI["color_border"],
-                             border_width=1, corner_radius=12)
-        card.grid(row=0, column=0, sticky="nsew", padx=(0, 8), pady=10)
+        card_outer = ctk.CTkFrame(parent, fg_color=UI["color_card"],
+                                   border_color=UI["color_border"],
+                                   border_width=1, corner_radius=12)
+        card_outer.grid(row=0, column=0, sticky="nsew", padx=(0, 8), pady=10)
+        card_outer.grid_columnconfigure(0, weight=1)
+        card_outer.grid_rowconfigure(0, weight=1)
+
+        # El formulario completo (tipo, producto, vehículo, conductor,
+        # transportista, empresas) puede superar en altura a la ventana
+        # en monitores de menor resolución -- sin scroll, los últimos
+        # campos quedaban tapados por el borde de la ventana sin forma
+        # de alcanzarlos (ver fix de minsize en _construir() para el
+        # mismo síntoma en el ancho).
+        card = ctk.CTkScrollableFrame(card_outer, fg_color="transparent",
+                                       label_text="")
+        card.grid(row=0, column=0, sticky="nsew")
         card.grid_columnconfigure((0, 1), weight=1)
 
         row = 0
@@ -249,25 +269,99 @@ class PesajeEntradaView(ctk.CTkFrame):
         row += 1
 
         # ── Empresa Transportista ─────────────────────────────
+        # Mismo patrón que Vehículo/Conductor: se busca por código contra
+        # el maestro de Empresas Transportistas y, si existe, autocompleta
+        # el nombre y guarda empresa_transportista_id (mejor para kardex/
+        # reportes); si no existe, sigue funcionando como texto libre.
         self._seccion(card, "EMPRESA TRANSPORTISTA", row); row += 1
+
+        transp_frame = ctk.CTkFrame(card, fg_color="transparent")
+        transp_frame.grid(row=row, column=0, columnspan=2, sticky="ew",
+                           padx=18, pady=(4, 4))
+        transp_frame.grid_columnconfigure(0, weight=1)
+
+        self._entry_cod_transportista = ctk.CTkEntry(
+            transp_frame, placeholder_text="Código de la empresa transportista",
+            height=40, font=ctk.CTkFont(family=UI["fuente"], size=13),
+            **_INPUT_STYLE,
+        )
+        self._entry_cod_transportista.grid(row=0, column=0, sticky="ew", padx=(0, 8))
+        self._entry_cod_transportista.bind("<Return>", lambda e: self._buscar_transportista())
+
+        ctk.CTkButton(
+            transp_frame, text="🔍 Buscar",
+            command=self._buscar_transportista,
+            width=96, height=40, corner_radius=8,
+            fg_color=UI["color_accent"],
+            hover_color=UI["color_accent_hover"],
+            font=ctk.CTkFont(family=UI["fuente"], size=12)
+        ).grid(row=0, column=1)
+        row += 1
+
         self._entry_transportista = ctk.CTkEntry(
             card, placeholder_text="Nombre de la empresa transportista",
             height=40, font=ctk.CTkFont(family=UI["fuente"], size=13),
             **_INPUT_STYLE,
         )
         self._entry_transportista.grid(row=row, column=0, columnspan=2,
-                                        sticky="ew", padx=18, pady=(4, 10))
+                                        sticky="ew", padx=18, pady=(0, 4))
+        row += 1
+
+        self._lbl_transportista_info = ctk.CTkLabel(
+            card, text="",
+            font=ctk.CTkFont(family=UI["fuente"], size=11),
+            text_color=UI["color_muted"]
+        )
+        self._lbl_transportista_info.grid(row=row, column=0, columnspan=2,
+                                           padx=18, pady=(0, 6), sticky="w")
         row += 1
 
         # ── Empresa Cliente / Proveedor ───────────────────────
+        # Igual patrón, contra el maestro de Proveedores ya existente --
+        # antes este campo era texto libre y proveedor_id nunca se
+        # enviaba al backend (se perdía siempre, aunque el servicio ya
+        # lo acepta).
         self._seccion(card, "EMPRESA (CLIENTE O PROVEEDOR)", row); row += 1
+
+        prov_frame = ctk.CTkFrame(card, fg_color="transparent")
+        prov_frame.grid(row=row, column=0, columnspan=2, sticky="ew",
+                         padx=18, pady=(4, 4))
+        prov_frame.grid_columnconfigure(0, weight=1)
+
+        self._entry_cod_proveedor = ctk.CTkEntry(
+            prov_frame, placeholder_text="Código del cliente o proveedor",
+            height=40, font=ctk.CTkFont(family=UI["fuente"], size=13),
+            **_INPUT_STYLE,
+        )
+        self._entry_cod_proveedor.grid(row=0, column=0, sticky="ew", padx=(0, 8))
+        self._entry_cod_proveedor.bind("<Return>", lambda e: self._buscar_proveedor())
+
+        ctk.CTkButton(
+            prov_frame, text="🔍 Buscar",
+            command=self._buscar_proveedor,
+            width=96, height=40, corner_radius=8,
+            fg_color=UI["color_accent"],
+            hover_color=UI["color_accent_hover"],
+            font=ctk.CTkFont(family=UI["fuente"], size=12)
+        ).grid(row=0, column=1)
+        row += 1
+
         self._entry_empresa_cp = ctk.CTkEntry(
             card, placeholder_text="Nombre de la empresa cliente o proveedor",
             height=40, font=ctk.CTkFont(family=UI["fuente"], size=13),
             **_INPUT_STYLE,
         )
         self._entry_empresa_cp.grid(row=row, column=0, columnspan=2,
-                                     sticky="ew", padx=18, pady=(4, 18))
+                                     sticky="ew", padx=18, pady=(0, 4))
+        row += 1
+
+        self._lbl_proveedor_info = ctk.CTkLabel(
+            card, text="",
+            font=ctk.CTkFont(family=UI["fuente"], size=11),
+            text_color=UI["color_muted"]
+        )
+        self._lbl_proveedor_info.grid(row=row, column=0, columnspan=2,
+                                       padx=18, pady=(0, 18), sticky="w")
         row += 1
 
         # Cargar productos por defecto (GENERAL)
@@ -513,6 +607,90 @@ class PesajeEntradaView(ctk.CTkFrame):
             )
 
     # ----------------------------------------------------------
+    def _buscar_transportista(self):
+        """Busca la empresa transportista por código (igual patrón que Conductor).
+
+        Si existe, autocompleta el nombre y la deja linkeada por
+        empresa_transportista_id. Si no existe, el operador puede seguir
+        escribiendo el nombre a mano -- se guarda como texto libre
+        (empresa_transportista).
+        """
+        codigo = self._entry_cod_transportista.get().strip()
+        if not codigo:
+            messagebox.showwarning("Buscar", "Ingrese el código de la empresa transportista")
+            return
+
+        self._transportista_seleccionada = None
+        try:
+            encontrados = api_client.listar_maestro("empresas_transportistas", search=codigo)
+        except ApiError as e:
+            messagebox.showerror("Error de conexión", str(e))
+            return
+
+        codigo_norm = codigo.upper().replace(" ", "")
+        t = next(
+            (x for x in encontrados
+             if x["codigo"].upper().replace(" ", "") == codigo_norm),
+            None
+        )
+
+        if t:
+            self._transportista_seleccionada = t
+            self._entry_transportista.delete(0, "end")
+            self._entry_transportista.insert(0, t["nombre"])
+            self._lbl_transportista_info.configure(
+                text=f"✓ Empresa registrada  |  {t.get('telefono') or 'sin teléfono'}",
+                text_color=UI["color_success"]
+            )
+        else:
+            self._lbl_transportista_info.configure(
+                text="No registrada — se guardará solo con el nombre ingresado.",
+                text_color=UI["color_muted"]
+            )
+
+    # ----------------------------------------------------------
+    def _buscar_proveedor(self):
+        """Busca el cliente/proveedor por código contra el maestro de Proveedores
+        (igual patrón que Conductor/Transportista).
+
+        Si existe, autocompleta el nombre y lo deja linkeado por
+        proveedor_id. Si no existe, sigue funcionando como texto libre
+        (empresa_cliente_proveedor).
+        """
+        codigo = self._entry_cod_proveedor.get().strip()
+        if not codigo:
+            messagebox.showwarning("Buscar", "Ingrese el código del cliente o proveedor")
+            return
+
+        self._proveedor_seleccionado = None
+        try:
+            encontrados = api_client.listar_maestro("proveedores", search=codigo)
+        except ApiError as e:
+            messagebox.showerror("Error de conexión", str(e))
+            return
+
+        codigo_norm = codigo.upper().replace(" ", "")
+        p = next(
+            (x for x in encontrados
+             if x["codigo"].upper().replace(" ", "") == codigo_norm),
+            None
+        )
+
+        if p:
+            self._proveedor_seleccionado = p
+            self._entry_empresa_cp.delete(0, "end")
+            self._entry_empresa_cp.insert(0, p["nombre"])
+            self._lbl_proveedor_info.configure(
+                text=f"✓ Proveedor registrado  |  {p.get('telefono') or 'sin teléfono'}",
+                text_color=UI["color_success"]
+            )
+        else:
+            self._lbl_proveedor_info.configure(
+                text="No registrado — se guardará solo con el nombre ingresado.",
+                text_color=UI["color_muted"]
+            )
+
+    # ----------------------------------------------------------
     def _actualizar_peso(self):
         """Lee el peso de la báscula y actualiza la pantalla."""
         try:
@@ -612,13 +790,33 @@ class PesajeEntradaView(ctk.CTkFrame):
                 cedula_conductor.upper().replace(" ", "")):
             conductor_id = self._conductor_seleccionado["id"]
 
+        # Empresa Transportista y Proveedor -- mismo criterio anti-stale
+        # que Conductor: solo se linkea por id si el código buscado sigue
+        # coincidiendo con lo que hay en el campo (si el operador lo
+        # editó después de buscar, se cae a texto libre).
+        codigo_transportista = self._entry_cod_transportista.get().strip()
+        empresa_transportista_id = None
+        if (self._transportista_seleccionada and
+                self._transportista_seleccionada["codigo"].upper().replace(" ", "") ==
+                codigo_transportista.upper().replace(" ", "")):
+            empresa_transportista_id = self._transportista_seleccionada["id"]
+
+        codigo_proveedor = self._entry_cod_proveedor.get().strip()
+        proveedor_id = None
+        if (self._proveedor_seleccionado and
+                self._proveedor_seleccionado["codigo"].upper().replace(" ", "") ==
+                codigo_proveedor.upper().replace(" ", "")):
+            proveedor_id = self._proveedor_seleccionado["id"]
+
         resultado = api_client.registrar_entrada(
             peso_bruto=float(peso),
             vehiculo_id=vehiculo["id"],
             tipo_pesaje=tipo_key,
             producto_id=producto_id,
             empresa_transportista=self._entry_transportista.get().strip(),
+            empresa_transportista_id=empresa_transportista_id,
             empresa_cliente_proveedor=self._entry_empresa_cp.get().strip(),
+            proveedor_id=proveedor_id,
             conductor_id=conductor_id,
             cedula_conductor_libre=cedula_conductor,
             observaciones=""
@@ -648,8 +846,14 @@ class PesajeEntradaView(ctk.CTkFrame):
         self._entry_nombre_conductor.delete(0, "end")
         self._conductor_seleccionado = None
         self._lbl_conductor_info.configure(text="")
+        self._entry_cod_transportista.delete(0, "end")
         self._entry_transportista.delete(0, "end")
+        self._transportista_seleccionada = None
+        self._lbl_transportista_info.configure(text="")
+        self._entry_cod_proveedor.delete(0, "end")
         self._entry_empresa_cp.delete(0, "end")
+        self._proveedor_seleccionado = None
+        self._lbl_proveedor_info.configure(text="")
         self._lbl_resumen_tipo.configure(text="Tipo: —")
         self._lbl_resumen_prod.configure(text="Producto: —")
         self._lbl_resumen_veh.configure(text="Vehículo: —")

@@ -40,6 +40,9 @@ PERMISOS = {
     "pesaje_completar":     [1, 2, 3],      # Romana completa post-aprobación
     "pesaje_anular":        [1, 2],         # Solo admin y supervisor anulan
     "corte_pesadas":        [1, 2],         # Solo admin y supervisor hacen cortes
+    "pesaje_ver_pendientes_cc": [1, 2, 3, 4], # Romana también puede VER la cola de
+                                            # CC (solo lectura, en Completar Pesaje)
+                                            # -- aprobar/rechazar sigue siendo solo CC
 
     # --- Centro de Costos ---
     "centro_costos":        [1, 2, 4],      # CC + admin pueden aprobar/rechazar

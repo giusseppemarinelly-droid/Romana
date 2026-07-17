@@ -63,6 +63,27 @@ class ProveedorIn(BaseModel):
     email: Optional[str] = None
 
 
+class EmpresaTransportistaOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: int
+    codigo: str
+    nombre: str
+    rif: Optional[str] = None
+    direccion: Optional[str] = None
+    telefono: Optional[str] = None
+    email: Optional[str] = None
+    activo: bool
+
+
+class EmpresaTransportistaIn(BaseModel):
+    codigo: str
+    nombre: str
+    rif: Optional[str] = None
+    direccion: Optional[str] = None
+    telefono: Optional[str] = None
+    email: Optional[str] = None
+
+
 class ProductoOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     id: int

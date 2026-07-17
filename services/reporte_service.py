@@ -43,20 +43,37 @@ def _fmt_peso(val) -> str:
     return "—"
 
 
+def _fmt_solo_fecha(dt) -> str:
+    """Solo la fecha (dd/mm/aaaa), sin hora."""
+    return dt.strftime("%d/%m/%Y") if dt else "—"
+
+
+def _fmt_solo_hora(dt) -> str:
+    """Solo la hora, en formato 12h con AM/PM (igual al ticket de referencia)."""
+    return dt.strftime("%I:%M:%S %p") if dt else "—"
+
+
+# Traduce tipo_pesaje al lenguaje de "Operación" del formato de ticket
+# heredado: pesaje general = mercancía que entra a la planta
+# (recepción), producto terminado = mercancía que sale (despacho).
+_OPERACION_POR_TIPO = {
+    "GENERAL": "RECEPCIÓN",
+    "PRODUCTO_TERMINADO": "DESPACHO",
+}
+
+
 # =============================================================
 # TICKET DE PESAJE (PDF)
 # =============================================================
 
 def generar_ticket_pdf(pesada) -> bytes:
     """
-    Genera el ticket de pesaje en PDF.
-
-    El ticket incluye:
-     - Encabezado con datos de la empresa
-     - Número de ticket y fechas
-     - Datos del vehículo, conductor, producto
-     - Tabla de pesos (bruto, tara, neto)
-     - Pie de ticket
+    Genera el ticket de pesaje en PDF con el formato de planilla que ya
+    usaba la empresa con el sistema anterior (Bigsoft) -- mismo layout
+    y campos, alimentado con los datos de Pesada en vez de texto fijo,
+    para que operadores y choferes no tengan que aprender un documento
+    nuevo. Los datos de la empresa salen de config.py (EMPRESA), no
+    están hardcodeados acá.
 
     Args:
         pesada: Objeto Pesada de la base de datos
@@ -71,154 +88,186 @@ def generar_ticket_pdf(pesada) -> bytes:
     doc = SimpleDocTemplate(
         buffer,
         pagesize=A4,
-        leftMargin=2*cm, rightMargin=2*cm,
-        topMargin=1.5*cm, bottomMargin=1.5*cm
+        leftMargin=1.5*cm, rightMargin=1.5*cm,
+        topMargin=1.2*cm, bottomMargin=1.2*cm
     )
-
-    styles = getSampleStyleSheet()
     elements = []
+    NEGRO = colors.black
+    ANCHO_TOTAL = 18*cm
 
-    # ---- Colores ----
-    AZUL     = colors.HexColor("#1E3A5F")
-    AZUL_CLR = colors.HexColor("#1E90FF")
-    GRIS     = colors.HexColor("#F5F5F5")
-    VERDE    = colors.HexColor("#00703C")
+    style_empresa = ParagraphStyle("empresa", fontName="Courier-Bold", fontSize=11,
+                                    alignment=TA_CENTER, leading=13)
+    style_empresa_sub = ParagraphStyle("empresa_sub", fontName="Courier", fontSize=7.5,
+                                        alignment=TA_CENTER, leading=10)
+    style_lbl = ParagraphStyle("lbl", fontName="Courier", fontSize=9, leading=13)
+    style_ticket_nro = ParagraphStyle("ticket_nro", fontName="Courier-Bold", fontSize=13,
+                                       alignment=TA_RIGHT, leading=15)
+    style_fecha_hdr = ParagraphStyle("fecha_hdr", fontName="Courier", fontSize=9,
+                                      alignment=TA_RIGHT, leading=12)
 
-    # ---- Encabezado: nombre empresa ----
-    style_titulo = ParagraphStyle(
-        "titulo", parent=styles["Normal"],
-        fontSize=18, fontName="Helvetica-Bold",
-        alignment=TA_CENTER, textColor=AZUL,
-        spaceAfter=4
-    )
-    style_sub = ParagraphStyle(
-        "sub", parent=styles["Normal"],
-        fontSize=10, fontName="Helvetica",
-        alignment=TA_CENTER, textColor=colors.grey,
-        spaceAfter=2
-    )
-
-    elements.append(Paragraph(EMPRESA["nombre"], style_titulo))
-    elements.append(Paragraph(f"RIF: {EMPRESA['rif']}", style_sub))
-    elements.append(Paragraph(EMPRESA["direccion"], style_sub))
-    elements.append(Paragraph(f"Tel: {EMPRESA['telefono']}", style_sub))
-    elements.append(HRFlowable(width="100%", thickness=2, color=AZUL_CLR))
-    elements.append(Spacer(1, 8))
-
-    # ---- Número de ticket ----
-    style_ticket_num = ParagraphStyle(
-        "ticket_num", parent=styles["Normal"],
-        fontSize=22, fontName="Helvetica-Bold",
-        alignment=TA_CENTER, textColor=AZUL_CLR,
-        spaceAfter=4
-    )
-    elements.append(Paragraph(f"TICKET DE PESAJE  {pesada.numero_ticket}", style_ticket_num))
-    elements.append(Spacer(1, 8))
-
-    # ---- Tabla de datos ----
-    def fila(etiqueta, valor):
-        return [
-            Paragraph(f"<b>{etiqueta}</b>", styles["Normal"]),
-            Paragraph(str(valor), styles["Normal"])
-        ]
-
-    datos_tabla = [
-        fila("Fecha Entrada:",  _fmt_fecha(pesada.fecha_entrada)),
-        fila("Fecha Salida:",   _fmt_fecha(pesada.fecha_salida)),
-        fila("Vehículo (Placa):", pesada.vehiculo.placa if pesada.vehiculo else "—"),
-        fila("Conductor:",      pesada.conductor.nombre if pesada.conductor else "—"),
-        fila("Producto:",       pesada.producto.nombre if pesada.producto else "—"),
-        fila("Proveedor:",      pesada.proveedor.nombre if pesada.proveedor else "—"),
-        fila("Destino:",        pesada.destino.nombre if pesada.destino else "—"),
+    # ---- Encabezado: empresa a la izq., ticket nro/fecha a la der. ----
+    celda_empresa = [
+        Paragraph(EMPRESA["nombre"], style_empresa),
+        Paragraph(EMPRESA["direccion"], style_empresa_sub),
+        Paragraph(f"VENEZUELA. TELF.{EMPRESA['telefono']}", style_empresa_sub),
     ]
-    if pesada.lote:
-        datos_tabla.append(fila("Lote:", pesada.lote.codigo))
-    if pesada.remolque:
-        datos_tabla.append(fila("Remolque:", pesada.remolque.placa))
-    if pesada.observaciones:
-        datos_tabla.append(fila("Observaciones:", pesada.observaciones))
-
-    tabla_datos = Table(datos_tabla, colWidths=[5*cm, 12*cm])
-    tabla_datos.setStyle(TableStyle([
-        ("BACKGROUND", (0, 0), (0, -1), GRIS),
-        ("FONTNAME", (0, 0), (-1, -1), "Helvetica"),
-        ("FONTSIZE", (0, 0), (-1, -1), 10),
-        ("TOPPADDING", (0, 0), (-1, -1), 6),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
-        ("LEFTPADDING", (0, 0), (-1, -1), 8),
-        ("GRID", (0, 0), (-1, -1), 0.5, colors.lightgrey),
-    ]))
-    elements.append(tabla_datos)
-    elements.append(Spacer(1, 15))
-
-    # ---- Tabla de PESOS (la más importante) ----
-    style_peso_titulo = ParagraphStyle(
-        "peso_titulo", parent=styles["Normal"],
-        fontSize=11, fontName="Helvetica-Bold",
-        alignment=TA_CENTER
-    )
-
-    pesos_data = [
-        ["CONCEPTO", "PESO (KG)"],
-        ["PESO BRUTO", f"{float(pesada.peso_bruto or 0):>12,.2f}"],
-        ["PESO TARA",  f"{float(pesada.peso_tara or 0):>12,.2f}"],
-        ["PESO NETO",  f"{float(pesada.peso_neto or 0):>12,.2f}"],
+    celda_ticket = [
+        Paragraph(f"TICKET NRO: <b>{pesada.numero_ticket}</b>", style_ticket_nro),
+        Paragraph(f"Fecha: {_fmt_solo_fecha(pesada.fecha_salida or pesada.fecha_entrada)}",
+                  style_fecha_hdr),
     ]
-
-    tabla_pesos = Table(pesos_data, colWidths=[9*cm, 8*cm])
-    tabla_pesos.setStyle(TableStyle([
-        # Header
-        ("BACKGROUND", (0, 0), (-1, 0), AZUL),
-        ("TEXTCOLOR",  (0, 0), (-1, 0), colors.white),
-        ("FONTNAME",   (0, 0), (-1, 0), "Helvetica-Bold"),
-        ("FONTSIZE",   (0, 0), (-1, 0), 12),
-        ("ALIGN",      (0, 0), (-1, 0), "CENTER"),
-
-        # Filas de datos
-        ("FONTNAME",   (0, 1), (-1, -2), "Helvetica"),
-        ("FONTSIZE",   (0, 1), (-1, -2), 11),
-        ("ALIGN",      (1, 1), (1, -1),  "RIGHT"),
-
-        # Fila NETO (destacada en verde)
-        ("BACKGROUND", (0, -1), (-1, -1), VERDE),
-        ("TEXTCOLOR",  (0, -1), (-1, -1), colors.white),
-        ("FONTNAME",   (0, -1), (-1, -1), "Helvetica-Bold"),
-        ("FONTSIZE",   (0, -1), (-1, -1), 14),
-
-        # Padding
-        ("TOPPADDING",    (0, 0), (-1, -1), 10),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 10),
-        ("LEFTPADDING",   (0, 0), (-1, -1), 12),
-
-        # Bordes
-        ("GRID",       (0, 0), (-1, -1), 1, colors.grey),
-        ("BOX",        (0, 0), (-1, -1), 2, AZUL),
-
-        # Alternar filas
-        ("BACKGROUND", (0, 1), (-1, 1), GRIS),
+    tabla_header = Table([[celda_empresa, celda_ticket]], colWidths=[12*cm, 6*cm])
+    tabla_header.setStyle(TableStyle([
+        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+        ("LEFTPADDING", (0, 0), (-1, -1), 0), ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+        ("TOPPADDING", (0, 0), (-1, -1), 0), ("BOTTOMPADDING", (0, 0), (-1, -1), 0),
     ]))
-    elements.append(tabla_pesos)
-    elements.append(Spacer(1, 20))
+    elements.append(tabla_header)
+    elements.append(Spacer(1, 4))
+    elements.append(HRFlowable(width="100%", thickness=1, color=NEGRO))
+    elements.append(Spacer(1, 2))
 
-    # ---- Pie del ticket ----
-    style_pie = ParagraphStyle(
-        "pie", parent=styles["Normal"],
-        fontSize=9, fontName="Helvetica",
-        alignment=TA_CENTER, textColor=colors.grey,
-        spaceAfter=2
-    )
-    elements.append(HRFlowable(width="100%", thickness=1, color=colors.lightgrey))
+    elements.append(Paragraph(
+        f"Telefono: &nbsp;&nbsp;&nbsp;&nbsp;&nbsp; Fax: &nbsp;&nbsp;&nbsp;&nbsp;&nbsp; "
+        f"RIF: {EMPRESA['rif']}", style_lbl))
+    elements.append(Spacer(1, 4))
+    elements.append(HRFlowable(width="100%", thickness=1, color=NEGRO))
     elements.append(Spacer(1, 6))
 
-    usr_entrada = pesada.usuario_entrada.nombre_completo if pesada.usuario_entrada else "—"
-    usr_salida  = pesada.usuario_salida.nombre_completo  if pesada.usuario_salida  else "—"
+    # ---- Datos de la operación: cliente, producto, chofer, vehículo... ----
+    proveedor_txt = (f"{pesada.proveedor.codigo} {pesada.proveedor.nombre}"
+                      if pesada.proveedor else (pesada.empresa_cliente_proveedor or "—"))
+    producto_txt = (f"{pesada.producto.codigo} {pesada.producto.nombre}"
+                     if pesada.producto else "—")
+    if pesada.conductor:
+        chofer_txt = f"{pesada.conductor.documento} &nbsp;&nbsp; {pesada.conductor.nombre}"
+    else:
+        chofer_txt = pesada.cedula_conductor_libre or "—"
+    placa_txt = pesada.vehiculo.placa if pesada.vehiculo else "—"
+    remolque_txt = pesada.remolque.placa if pesada.remolque else ""
+    operacion_txt = _OPERACION_POR_TIPO.get(pesada.tipo_pesaje, pesada.tipo_pesaje)
+    transporte_txt = (pesada.transportista.nombre if pesada.transportista
+                       else (pesada.empresa_transportista or "—"))
+    orden_txt = pesada.orden_compra or "—"
+    cantidad_txt = f"{float(pesada.cantidad):,.2f}" if pesada.cantidad else "0.00"
 
-    elements.append(Paragraph(
-        f"Operador entrada: {usr_entrada}  |  Operador salida: {usr_salida}", style_pie))
-    elements.append(Paragraph(
-        f"Generado el {datetime.now().strftime('%d/%m/%Y a las %H:%M:%S')}", style_pie))
-    elements.append(Paragraph(
-        "Este ticket tiene validez como documento de pesaje oficial.", style_pie))
+    filas_info = [
+        [Paragraph(f"<b>CLIENTE</b>&nbsp;&nbsp;&nbsp;: {proveedor_txt}", style_lbl),
+         Paragraph(f"Producto: {producto_txt}", style_lbl)],
+        [Paragraph(f"Chofer C.I. {chofer_txt}", style_lbl),
+         Paragraph(f"Placa: {placa_txt} &nbsp;&nbsp;&nbsp; Remolque: {remolque_txt}", style_lbl)],
+        [Paragraph("Procedencia:", style_lbl),
+         Paragraph(f"Operacion: {operacion_txt}", style_lbl)],
+        [Paragraph(f"Transporte: {transporte_txt}", style_lbl),
+         Paragraph(f"Orden de Compra: {orden_txt} &nbsp;&nbsp;&nbsp; Cantidad: {cantidad_txt}",
+                    style_lbl)],
+    ]
+    tabla_info = Table(filas_info, colWidths=[ANCHO_TOTAL/2, ANCHO_TOTAL/2])
+    tabla_info.setStyle(TableStyle([
+        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+        ("LEFTPADDING", (0, 0), (-1, -1), 0), ("RIGHTPADDING", (0, 0), (-1, -1), 6),
+        ("TOPPADDING", (0, 0), (-1, -1), 2), ("BOTTOMPADDING", (0, 0), (-1, -1), 2),
+    ]))
+    elements.append(tabla_info)
+    elements.append(Spacer(1, 8))
+
+    # ---- Tabla de pesadas: Tara / Peso Bruto / Peso Final ----
+    # Peso Final es el 3er pesaje (nuevo en este sistema, antes de
+    # autorizar la salida) -- se agrega como 3ra columna solo si existe,
+    # las pesadas completadas antes de introducir este campo no lo tienen.
+    columnas_peso = [
+        ("TARA", pesada.fecha_entrada, pesada.peso_tara),
+        ("PESO BRUTO", pesada.fecha_captura, pesada.peso_bruto),
+    ]
+    if pesada.peso_final is not None:
+        columnas_peso.append(("PESO FINAL", pesada.fecha_salida, pesada.peso_final))
+
+    style_peso_hdr = ParagraphStyle("peso_hdr", fontName="Courier-Bold", fontSize=9,
+                                     alignment=TA_CENTER)
+    style_peso_val = ParagraphStyle("peso_val", fontName="Courier-Bold", fontSize=11,
+                                     alignment=TA_CENTER)
+    style_peso_lbl = ParagraphStyle("peso_lbl", fontName="Courier", fontSize=8,
+                                     alignment=TA_CENTER)
+
+    fila_encabezados = [Paragraph(nombre, style_peso_hdr) for nombre, _, _ in columnas_peso]
+    fila_fecha = [Paragraph(f"Fecha: {_fmt_solo_fecha(f)}", style_peso_lbl)
+                  for _, f, _ in columnas_peso]
+    fila_hora = [Paragraph(f"Hora: {_fmt_solo_hora(f)}", style_peso_lbl)
+                 for _, f, _ in columnas_peso]
+    fila_peso = [Paragraph(f"{float(p or 0):,.2f} KGS", style_peso_val)
+                 for _, _, p in columnas_peso]
+
+    ancho_col = ANCHO_TOTAL / len(columnas_peso)
+    tabla_pesadas = Table(
+        [fila_encabezados, fila_fecha, fila_hora, fila_peso],
+        colWidths=[ancho_col] * len(columnas_peso)
+    )
+    tabla_pesadas.setStyle(TableStyle([
+        ("GRID", (0, 0), (-1, -1), 1, NEGRO),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ("TOPPADDING", (0, 0), (-1, -1), 4), ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+    ]))
+    elements.append(tabla_pesadas)
+    elements.append(Spacer(1, 8))
+
+    elements.append(Paragraph(f"Precintos de Seguridad: {pesada.precintos or '—'}", style_lbl))
+    if pesada.observaciones:
+        elements.append(Paragraph(f"Observaciones: {pesada.observaciones}", style_lbl))
+    elements.append(Spacer(1, 8))
+
+    # ---- Peso Neto + diferencia contra la cantidad declarada ----
+    diferencia_txt = "—"
+    if pesada.cantidad and float(pesada.cantidad) != 0:
+        dif_pct = ((float(pesada.peso_neto or 0) - float(pesada.cantidad))
+                   / float(pesada.cantidad) * 100)
+        diferencia_txt = f"{dif_pct:,.2f} %"
+
+    style_dif_lbl = ParagraphStyle("dif_lbl", fontName="Courier", fontSize=9)
+    style_neto_lbl = ParagraphStyle("neto_lbl", fontName="Courier-Bold", fontSize=10)
+    style_neto_val = ParagraphStyle("neto_val", fontName="Courier-Bold", fontSize=16,
+                                     alignment=TA_CENTER)
+
+    celda_dif = [
+        Paragraph("Diferencia c/ Cantidad:", style_dif_lbl),
+        Paragraph(diferencia_txt, style_dif_lbl),
+    ]
+    celda_neto = [
+        Paragraph("PESO NETO", style_neto_lbl),
+        Paragraph(f"{float(pesada.peso_neto or 0):,.2f} KGS", style_neto_val),
+    ]
+    tabla_neto = Table([[celda_dif, celda_neto]], colWidths=[ANCHO_TOTAL/2, ANCHO_TOTAL/2])
+    tabla_neto.setStyle(TableStyle([
+        ("GRID", (0, 0), (-1, -1), 1, NEGRO),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ("ALIGN", (1, 0), (1, 0), "CENTER"),
+        ("TOPPADDING", (0, 0), (-1, -1), 6), ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+    ]))
+    elements.append(tabla_neto)
+    elements.append(Spacer(1, 30))
+
+    # ---- Firmas ----
+    usr_firma = (pesada.usuario_salida.nombre_completo if pesada.usuario_salida
+                 else (pesada.usuario_entrada.nombre_completo if pesada.usuario_entrada else "—"))
+    conductor_firma = (pesada.conductor.nombre if pesada.conductor
+                        else (pesada.cedula_conductor_libre or "—"))
+
+    style_firma_lbl = ParagraphStyle("firma_lbl", fontName="Courier", fontSize=9)
+    style_firma_nom = ParagraphStyle("firma_nom", fontName="Courier-Bold", fontSize=9,
+                                      alignment=TA_CENTER)
+
+    tabla_firmas = Table([
+        [Paragraph("Romanero:", style_firma_lbl), "",
+         Paragraph("Conductor:", style_firma_lbl), ""],
+        ["", Paragraph(usr_firma, style_firma_nom),
+         "", Paragraph(conductor_firma, style_firma_nom)],
+    ], colWidths=[2.3*cm, 6.7*cm, 2.5*cm, 6.5*cm])
+    tabla_firmas.setStyle(TableStyle([
+        ("LINEABOVE", (1, 0), (1, 0), 1, NEGRO),
+        ("LINEABOVE", (3, 0), (3, 0), 1, NEGRO),
+        ("VALIGN", (0, 0), (-1, -1), "BOTTOM"),
+        ("LEFTPADDING", (0, 0), (-1, -1), 0),
+    ]))
+    elements.append(tabla_firmas)
 
     # ---- Construir PDF ----
     doc.build(elements)

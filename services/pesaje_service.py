@@ -39,6 +39,7 @@ def _pesada_options():
         joinedload(Pesada.conductor),
         joinedload(Pesada.producto),
         joinedload(Pesada.proveedor),
+        joinedload(Pesada.transportista),
         joinedload(Pesada.destino),
         joinedload(Pesada.lote),
         joinedload(Pesada.remolque),
@@ -291,6 +292,7 @@ def registrar_entrada(
     conductor_id: Optional[int] = None,
     cedula_conductor_libre: str = "",
     proveedor_id: Optional[int] = None,
+    empresa_transportista_id: Optional[int] = None,
     destino_id: Optional[int] = None,
     lote_id: Optional[int] = None,
     remolque_id: Optional[int] = None,
@@ -337,6 +339,7 @@ def registrar_entrada(
             cedula_conductor_libre=cedula_conductor_libre.strip() if cedula_conductor_libre else None,
             producto_id=producto_id,
             proveedor_id=proveedor_id,
+            empresa_transportista_id=empresa_transportista_id,
             destino_id=destino_id,
             lote_id=lote_id,
             remolque_id=remolque_id,
@@ -534,6 +537,7 @@ def rechazar_pesada(pesada_id: int, motivo: str, usuario_id: Optional[int] = Non
 # ============================================================
 def completar_pesaje(
     pesada_id: int,
+    peso_final: float,
     orden_compra: str = "",
     cantidad: Optional[float] = None,
     precintos: str = "",
@@ -541,8 +545,11 @@ def completar_pesaje(
     usuario_id: Optional[int] = None
 ) -> dict:
     """
-    PASO 4: Romana llena los datos finales y cierra la operación.
-    Solo disponible después de que CC haya aprobado.
+    PASO 4: Romana captura el peso final (3er pesaje, antes de autorizar la
+    salida), llena los datos finales y cierra la operación. Solo disponible
+    después de que CC haya aprobado. El peso_final se registra sin validar
+    tolerancia contra el pre-pesaje -- es un control informativo para el
+    operador, no bloquea el cierre si difiere.
     Estado resultante: "completado"
     """
     db = SessionLocal()
@@ -558,6 +565,10 @@ def completar_pesaje(
                 "mensaje": f"Solo se pueden completar pesadas aprobadas por CC. Estado: {pesada.estado}"
             }
 
+        if peso_final <= 0:
+            return {"exito": False, "mensaje": "El peso final debe ser mayor a 0"}
+
+        pesada.peso_final = round(float(peso_final), 2)
         pesada.orden_compra = orden_compra.strip() if orden_compra else None
         pesada.cantidad = round(float(cantidad), 2) if cantidad else None
         pesada.precintos = precintos.strip() if precintos else None
