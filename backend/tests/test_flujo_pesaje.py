@@ -24,17 +24,24 @@ def test_flujo_completo_entrada_a_completado(client, headers_romana, headers_cc,
 
     # 2. Romana captura el 2° peso (peso bruto real) — pasa a "pendiente_aprobacion"
     #    y el neto se calcula automáticamente (mayor - menor de los dos pesajes).
+    # peso_guia=8000 → diferencia de 25% contra el neto (10000), por
+    # encima de la tolerancia por defecto (10%): queda pendiente de
+    # revisión manual, que es justo lo que este test quiere ejercitar.
     r = client.post(
         f"/api/v1/pesadas/{pesada_id}/salida",
-        json={"peso_capturado": 25000},
+        json={"peso_capturado": 25000, "codigo_viaje": "V-1001", "peso_guia": 8000, "bultos": 40},
         headers=headers_romana,
     )
     assert r.status_code == 200, r.text
     pesada = r.json()
     assert pesada["estado"] == "pendiente_aprobacion"
+    assert pesada["auto_aprobado"] is False
     assert pesada["peso_bruto"] == 25000
     assert pesada["peso_tara"] == 15000
     assert pesada["peso_neto"] == 10000
+    assert pesada["codigo_viaje"] == "V-1001"
+    assert pesada["peso_guia"] == 8000
+    assert pesada["bultos"] == 40
 
     # 3. Centro de Costos aprueba — pasa a "aprobado".
     r = client.post(f"/api/v1/pesadas/{pesada_id}/aprobar", headers=headers_cc)
@@ -85,8 +92,16 @@ def test_permisos_por_nivel_operador_no_puede_aprobar(client, headers_romana, he
     assert r.status_code == 200, r.text
     pesada_id = r.json()["id"]
 
-    r = client.post(f"/api/v1/pesadas/{pesada_id}/salida", json={"peso_capturado": 20000}, headers=headers_romana)
+    # peso_guia=6000 → diferencia de 33.3% contra el neto (8000): fuera
+    # de tolerancia, sigue el camino de revisión manual que este test
+    # necesita (más abajo llama a /aprobar explícitamente).
+    r = client.post(
+        f"/api/v1/pesadas/{pesada_id}/salida",
+        json={"peso_capturado": 20000, "codigo_viaje": "V-2002", "peso_guia": 6000, "bultos": 15},
+        headers=headers_romana,
+    )
     assert r.status_code == 200, r.text
+    assert r.json()["estado"] == "pendiente_aprobacion"
 
     # Un operador de Romana (nivel 3) no tiene permiso "centro_costos".
     r = client.post(f"/api/v1/pesadas/{pesada_id}/aprobar", headers=headers_romana)
@@ -104,6 +119,73 @@ def test_permisos_por_nivel_operador_no_puede_aprobar(client, headers_romana, he
     r = client.post(f"/api/v1/pesadas/{pesada_id}/aprobar", headers=headers_cc)
     assert r.status_code == 200
     client.post(f"/api/v1/pesadas/{pesada_id}/completar", json={"peso_final": 20000}, headers=headers_romana)
+
+
+def test_auto_aprobacion_dentro_de_tolerancia(client, headers_romana, vehiculo_id):
+    """
+    Si la diferencia entre peso_guia y el neto capturado está por debajo
+    de la tolerancia configurada (10% por defecto), la pesada se aprueba
+    sola -- sin que Centro de Costos tenga que llamar a /aprobar.
+    """
+    r = client.post(
+        "/api/v1/pesadas/entrada",
+        json={"peso_bruto": 12000, "vehiculo_id": vehiculo_id, "tipo_pesaje": "GENERAL"},
+        headers=headers_romana,
+    )
+    assert r.status_code == 200, r.text
+    pesada_id = r.json()["id"]
+
+    # neto = 20000 - 12000 = 8000; peso_guia=7800 → diferencia ~2.56%, dentro de tolerancia.
+    r = client.post(
+        f"/api/v1/pesadas/{pesada_id}/salida",
+        json={"peso_capturado": 20000, "codigo_viaje": "V-3003", "peso_guia": 7800, "bultos": 25},
+        headers=headers_romana,
+    )
+    assert r.status_code == 200, r.text
+    pesada = r.json()
+    assert pesada["estado"] == "aprobado"
+    assert pesada["auto_aprobado"] is True
+    assert pesada["aprobado_por"] is None  # nadie de CC decidió, fue automático
+    assert pesada["codigo_viaje"] == "V-3003"
+    assert pesada["peso_guia"] == 7800
+    assert pesada["bultos"] == 25
+
+    # Romana puede completar directo, sin que CC haya tocado nada.
+    r = client.post(
+        f"/api/v1/pesadas/{pesada_id}/completar",
+        json={"peso_final": 20000}, headers=headers_romana,
+    )
+    assert r.status_code == 200, r.text
+    assert r.json()["estado"] == "completado"
+
+
+def test_diferencia_fuera_de_tolerancia_requiere_aprobacion_manual(client, headers_romana, headers_cc, vehiculo_id):
+    """Complemento del test anterior: por encima de la tolerancia, sigue
+    yendo a la cola accionable de Centro de Costos como hasta ahora."""
+    r = client.post(
+        "/api/v1/pesadas/entrada",
+        json={"peso_bruto": 10000, "vehiculo_id": vehiculo_id, "tipo_pesaje": "GENERAL"},
+        headers=headers_romana,
+    )
+    assert r.status_code == 200, r.text
+    pesada_id = r.json()["id"]
+
+    # neto = 19000 - 10000 = 9000; peso_guia=7000 → diferencia ~28.6%, fuera de tolerancia.
+    r = client.post(
+        f"/api/v1/pesadas/{pesada_id}/salida",
+        json={"peso_capturado": 19000, "codigo_viaje": "V-4004", "peso_guia": 7000, "bultos": 10},
+        headers=headers_romana,
+    )
+    assert r.status_code == 200, r.text
+    pesada = r.json()
+    assert pesada["estado"] == "pendiente_aprobacion"
+    assert pesada["auto_aprobado"] is False
+
+    r = client.post(f"/api/v1/pesadas/{pesada_id}/aprobar", headers=headers_cc)
+    assert r.status_code == 200, r.text
+    assert r.json()["auto_aprobado"] is False
+
+    client.post(f"/api/v1/pesadas/{pesada_id}/completar", json={"peso_final": 19000}, headers=headers_romana)
 
 
 def test_no_se_puede_registrar_dos_pesadas_activas_para_el_mismo_vehiculo(client, headers_romana, vehiculo_b_id):

@@ -201,6 +201,24 @@ def listar_pendientes_aprobacion() -> list:
         db.close()
 
 
+def listar_auto_aprobadas_recientes(limit: int = 30) -> list:
+    """
+    Pesadas que se aprobaron solas por estar la diferencia peso_guia/
+    peso_neto dentro de tolerancia (ver capturar_peso_salida) --
+    visibilidad de solo lectura para Centro de Costos, que no tuvo
+    que decidir nada sobre ellas.
+    """
+    db = SessionLocal()
+    try:
+        return db.query(Pesada).options(*_pesada_options()).filter(
+            Pesada.estado == "aprobado",
+            Pesada.auto_aprobado == True,
+            Pesada.anulada == False
+        ).order_by(Pesada.fecha_aprobacion.desc()).limit(limit).all()
+    finally:
+        db.close()
+
+
 def listar_aprobadas_pendientes_completar() -> list:
     """Pesadas que CC aprobó pero Romana aún no ha completado los datos."""
     db = SessionLocal()
@@ -385,11 +403,25 @@ def registrar_entrada(
 # ============================================================
 # PASO 2: CAPTURAR PESO DE SALIDA → va a Centro de Costos
 # ============================================================
-def capturar_peso_salida(pesada_id: int, peso_capturado: float, usuario_id: Optional[int] = None) -> dict:
+def capturar_peso_salida(
+    pesada_id: int,
+    peso_capturado: float,
+    codigo_viaje: str,
+    peso_guia: float,
+    bultos: int,
+    usuario_id: Optional[int] = None
+) -> dict:
     """
-    PASO 2: El camión volvió cargado, se captura el 2° peso.
-    Se envía a la cola de Centro de Costos para aprobación.
-    Estado resultante: "pendiente_aprobacion"
+    PASO 2: El camión volvió cargado, se captura el 2° peso junto con
+    los datos de la guía del transportista (código de viaje, peso
+    guía, bultos). Si la diferencia entre peso_guia y el neto
+    resultante está dentro de la tolerancia configurada
+    (tolerancia_aprobacion_pct, default 10%), la pesada se aprueba
+    sola -- Centro de Costos no tiene que decidir nada, pero igual ve
+    la pesada (de solo lectura, ver listar_auto_aprobadas_recientes).
+    Si la diferencia supera la tolerancia, sigue el camino normal:
+    va a la cola accionable de CC.
+    Estado resultante: "aprobado" (auto) o "pendiente_aprobacion" (manual)
     """
     db = SessionLocal()
     try:
@@ -407,6 +439,15 @@ def capturar_peso_salida(pesada_id: int, peso_capturado: float, usuario_id: Opti
         if peso_capturado <= 0:
             return {"exito": False, "mensaje": "El peso debe ser mayor a 0"}
 
+        if not codigo_viaje or not codigo_viaje.strip():
+            return {"exito": False, "mensaje": "Debe ingresar el código del viaje"}
+
+        if peso_guia is None or peso_guia <= 0:
+            return {"exito": False, "mensaje": "El peso guía debe ser mayor a 0"}
+
+        if bultos is None or bultos <= 0:
+            return {"exito": False, "mensaje": "La cantidad de bultos debe ser mayor a 0"}
+
         # Calcular neto preliminar (bruto mayor, tara menor)
         peso1 = float(pesada.peso_bruto)
         peso2 = float(peso_capturado)
@@ -419,14 +460,31 @@ def capturar_peso_salida(pesada_id: int, peso_capturado: float, usuario_id: Opti
             tara_real = peso2
 
         neto = round(bruto_real - tara_real, 2)
+        diferencia_pct = round(abs(neto - float(peso_guia)) / float(peso_guia) * 100, 2)
+        umbral = float(_get_config(db, "tolerancia_aprobacion_pct", "10"))
+        auto_aprobado = diferencia_pct < umbral
 
         pesada.peso_tara = round(tara_real, 2)
         pesada.peso_bruto = round(bruto_real, 2)
         pesada.peso_neto = neto
+        pesada.codigo_viaje = codigo_viaje.strip()
+        pesada.peso_guia = round(float(peso_guia), 2)
+        pesada.bultos = int(bultos)
         pesada.fecha_captura = datetime.now()
-        pesada.estado = "pendiente_aprobacion"
         pesada.motivo_rechazo = None  # Limpiar rechazo anterior si hubo
         pesada.usuario_salida_id = _resolver_usuario_id(usuario_id)
+
+        if auto_aprobado:
+            pesada.estado = "aprobado"
+            pesada.auto_aprobado = True
+            pesada.fecha_aprobacion = datetime.now()
+            mensaje = (f"Peso capturado. Neto: {neto:,.0f} KG. Diferencia {diferencia_pct}% "
+                       f"dentro de tolerancia: aprobado automáticamente.")
+        else:
+            pesada.estado = "pendiente_aprobacion"
+            pesada.auto_aprobado = False
+            mensaje = (f"Peso capturado. Neto: {neto:,.0f} KG. Diferencia {diferencia_pct}%: "
+                       f"enviado a Centro de Costos para revisión.")
 
         db.commit()
         pesada = db.query(Pesada).options(*_pesada_options()).filter_by(
@@ -434,9 +492,11 @@ def capturar_peso_salida(pesada_id: int, peso_capturado: float, usuario_id: Opti
 
         return {
             "exito": True,
-            "mensaje": f"Peso capturado. Neto: {neto:,.0f} KG. Enviado a Centro de Costos.",
+            "mensaje": mensaje,
             "pesada": pesada,
-            "peso_neto": neto
+            "peso_neto": neto,
+            "auto_aprobado": auto_aprobado,
+            "diferencia_pct": diferencia_pct,
         }
 
     except Exception as e:
@@ -722,11 +782,3 @@ def get_kardex(
         return query.order_by(Pesada.fecha_entrada.desc()).limit(limit).all()
     finally:
         db.close()
-
-
-# ============================================================
-# COMPATIBILIDAD REGISTRAR SALIDA (alias simplificado)
-# ============================================================
-def registrar_salida(pesada_id: int, peso_tara: float, observaciones: str = "") -> dict:
-    """Alias de capturar_peso_salida para compatibilidad con código anterior."""
-    return capturar_peso_salida(pesada_id, peso_tara)

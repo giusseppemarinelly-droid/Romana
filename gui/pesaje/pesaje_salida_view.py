@@ -11,6 +11,17 @@ from hardware.display_manager import leer_peso_actual, es_peso_estable
 from gui.async_utils import cargar_en_hilo
 
 
+# Mismo estilo de campos de entrada que pesaje_entrada_view.py.
+_INPUT_STYLE = dict(
+    fg_color=UI["color_input_bg"],
+    border_color=UI["color_border"],
+    border_width=2,
+    corner_radius=8,
+)
+
+UMBRAL_APROBACION_PREVIEW_PCT = 10  # Solo para el aviso en pantalla -- el backend decide con el valor real configurado.
+
+
 def _hora(iso_str):
     """La API devuelve fechas como texto ISO 8601 — se parsean para mostrar solo HH:MM."""
     if not iso_str:
@@ -330,6 +341,40 @@ class PesajeSalidaView(ctk.CTkFrame):
         )
         self._lbl_neto_preview.grid(row=row, column=0, pady=(0, 8)); row += 1
 
+        # Separador
+        ctk.CTkFrame(self._detalle_frame, height=1,
+                      fg_color=UI["color_border"]).grid(
+            row=row, column=0, sticky="ew", pady=6); row += 1
+
+        # Datos de la guía del transportista -- necesarios para que CC
+        # reciba la info completa y para decidir la aprobación automática.
+        ctk.CTkLabel(
+            self._detalle_frame, text="DATOS DE LA GUÍA",
+            font=ctk.CTkFont(family=UI["fuente"], size=10, weight="bold"),
+            text_color=UI["color_muted"]
+        ).grid(row=row, column=0, sticky="w"); row += 1
+
+        self._entry_codigo_viaje = ctk.CTkEntry(
+            self._detalle_frame, placeholder_text="Código del viaje",
+            height=36, font=ctk.CTkFont(family=UI["fuente"], size=12),
+            **_INPUT_STYLE,
+        )
+        self._entry_codigo_viaje.grid(row=row, column=0, sticky="ew", pady=(4, 4)); row += 1
+
+        self._entry_peso_guia = ctk.CTkEntry(
+            self._detalle_frame, placeholder_text="Peso guía (KG)",
+            height=36, font=ctk.CTkFont(family=UI["fuente"], size=12),
+            **_INPUT_STYLE,
+        )
+        self._entry_peso_guia.grid(row=row, column=0, sticky="ew", pady=(0, 4)); row += 1
+
+        self._entry_bultos = ctk.CTkEntry(
+            self._detalle_frame, placeholder_text="Bultos",
+            height=36, font=ctk.CTkFont(family=UI["fuente"], size=12),
+            **_INPUT_STYLE,
+        )
+        self._entry_bultos.grid(row=row, column=0, sticky="ew", pady=(0, 8)); row += 1
+
         # Botón capturar
         self._btn_capturar = ctk.CTkButton(
             self._detalle_frame,
@@ -421,32 +466,76 @@ class PesajeSalidaView(ctk.CTkFrame):
             )
             return
 
+        codigo_viaje = self._entry_codigo_viaje.get().strip()
+        peso_guia_txt = self._entry_peso_guia.get().strip()
+        bultos_txt = self._entry_bultos.get().strip()
+
+        if not codigo_viaje:
+            messagebox.showerror("Falta código de viaje", "Debe ingresar el código del viaje.")
+            return
+
+        try:
+            peso_guia = float(peso_guia_txt)
+            if peso_guia <= 0:
+                raise ValueError
+        except ValueError:
+            messagebox.showerror("Peso guía inválido", "Ingrese un peso guía numérico mayor a 0.")
+            return
+
+        try:
+            bultos = int(bultos_txt)
+            if bultos <= 0:
+                raise ValueError
+        except ValueError:
+            messagebox.showerror("Bultos inválido", "Ingrese una cantidad de bultos numérica mayor a 0.")
+            return
+
         p1 = float(self._pesada_seleccionada["peso_bruto"] or 0)
         neto = abs(float(peso) - p1)
+        diferencia_pct = abs(neto - peso_guia) / peso_guia * 100
+        if diferencia_pct < UMBRAL_APROBACION_PREVIEW_PCT:
+            aviso_destino = "Diferencia dentro de tolerancia → se aprobará automáticamente."
+        else:
+            aviso_destino = "Diferencia fuera de tolerancia → se enviará a Centro de Costos para revisión."
 
         if not messagebox.askyesno(
             "Confirmar captura",
             f"Camión: {self._pesada_seleccionada['vehiculo']['placa']}\n"
             f"Peso entrada: {p1:,.0f} KG\n"
             f"Peso actual:  {peso:,.0f} KG\n"
-            f"NETO:         {neto:,.0f} KG\n\n"
-            "¿Capturar y enviar a Centro de Costos para aprobación?"
+            f"NETO:         {neto:,.0f} KG\n"
+            f"Peso guía:    {peso_guia:,.0f} KG\n"
+            f"Diferencia:   {diferencia_pct:,.2f} %\n\n"
+            f"{aviso_destino}\n\n¿Capturar peso?"
         ):
             return
 
         resultado = api_client.capturar_salida(
             pesada_id=self._pesada_seleccionada["id"],
-            peso_capturado=float(peso)
+            peso_capturado=float(peso),
+            codigo_viaje=codigo_viaje,
+            peso_guia=peso_guia,
+            bultos=bultos,
         )
 
         if resultado["exito"]:
-            messagebox.showinfo(
-                "Enviado a Centro de Costos ✓",
-                f"Ticket: {self._pesada_seleccionada['numero_ticket']}\n"
-                f"Peso neto: {resultado['peso_neto']:,.0f} KG\n\n"
-                "La pesada fue enviada a Centro de Costos.\n"
-                "Espere la aprobación para completar los datos finales."
-            )
+            if resultado["auto_aprobado"]:
+                messagebox.showinfo(
+                    "Aprobado automáticamente ✓",
+                    f"Ticket: {self._pesada_seleccionada['numero_ticket']}\n"
+                    f"Peso neto: {resultado['peso_neto']:,.0f} KG\n\n"
+                    "La diferencia con el peso guía estaba dentro de tolerancia:\n"
+                    "la pesada quedó aprobada sin pasar por Centro de Costos.\n"
+                    "Ya puede completar los datos finales."
+                )
+            else:
+                messagebox.showinfo(
+                    "Enviado a Centro de Costos ✓",
+                    f"Ticket: {self._pesada_seleccionada['numero_ticket']}\n"
+                    f"Peso neto: {resultado['peso_neto']:,.0f} KG\n\n"
+                    "La pesada fue enviada a Centro de Costos.\n"
+                    "Espere la aprobación para completar los datos finales."
+                )
             self._cargar_cola()
         else:
             messagebox.showerror("Error", resultado["mensaje"])

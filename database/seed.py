@@ -32,6 +32,7 @@ def crear_configuracion_inicial(db):
         ("capacidad_max",    "80000",                  "Capacidad máxima de la báscula en KG"),
         ("puerto_com",       "COM1",                   "Puerto COM del display de pesaje"),
         ("baudrate",         "9600",                   "Velocidad del puerto COM"),
+        ("tolerancia_aprobacion_pct", "10",             "Diferencia % máxima entre peso guía y peso neto para aprobar automáticamente sin pasar por Centro de Costos"),
     ]
     for clave, valor, desc in params:
         existe = db.query(Configuracion).filter_by(clave=clave).first()

@@ -261,7 +261,9 @@ class Pesada(Base):
     FLUJO DE ESTADOS:
       "en_planta"            → Camión entró, fue pesado (peso entrada), esperando ser cargado
       "pendiente_aprobacion" → 2° peso capturado por Romana, esperando aprobación de CC
-      "aprobado"             → Centro de Costos aprobó, Romana puede completar datos
+      "aprobado"             → Centro de Costos aprobó (o se auto-aprobó por estar la
+                               diferencia peso_guia/peso_neto dentro de tolerancia --
+                               ver auto_aprobado), Romana puede completar datos
       "rechazado"            → Centro de Costos rechazó, vuelve a capturar peso
       "completado"           → 3° peso (peso_final) capturado y datos finales llenados,
                                proceso cerrado -- el peso_final se registra sin bloqueo
@@ -305,6 +307,12 @@ class Pesada(Base):
     peso_tara                = Column(Numeric(10, 2), nullable=True)  # Peso salida (2°)
     peso_neto                = Column(Numeric(10, 2), nullable=True)  # Calculado
     peso_final               = Column(Numeric(10, 2), nullable=True)  # 3° peso, antes de autorizar la salida
+
+    # --- Datos de guía del transportista (capturados junto al 2° peso) ---
+    codigo_viaje              = Column(String(50), nullable=True)
+    peso_guia                 = Column(Numeric(10, 2), nullable=True)
+    bultos                    = Column(Integer, nullable=True)
+    auto_aprobado             = Column(Boolean, default=False, nullable=False)
 
     # --- Datos de la empresa (texto libre, no FK) ---
     empresa_transportista    = Column(String(150), nullable=True)

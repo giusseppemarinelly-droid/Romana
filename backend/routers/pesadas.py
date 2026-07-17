@@ -53,11 +53,18 @@ async def registrar_entrada(body: EntradaIn, usuario: Usuario = Depends(get_curr
 @router.post("/{pesada_id}/salida", response_model=PesadaOut, dependencies=[Depends(requiere_permiso("pesaje_salida"))])
 async def capturar_salida(pesada_id: int, body: SalidaIn, usuario: Usuario = Depends(get_current_user)):
     resultado = await run_in_threadpool(
-        pesaje_service.capturar_peso_salida, pesada_id, body.peso_capturado, usuario_id=usuario.id
+        pesaje_service.capturar_peso_salida,
+        pesada_id, body.peso_capturado, body.codigo_viaje, body.peso_guia, body.bultos,
+        usuario_id=usuario.id
     )
     _fallo_si_no_exito(resultado)
-    # Evento clave: dispara el refresco automático de la cola en Centro de Costos.
-    await manager.broadcast({"tipo": "pesada_pendiente_aprobacion", "pesada_id": pesada_id})
+    # Evento clave: dispara el refresco automático en Centro de Costos --
+    # a la cola accionable si quedó pendiente, o al panel de solo lectura
+    # de auto-aprobadas si la diferencia estaba dentro de tolerancia.
+    if resultado["auto_aprobado"]:
+        await manager.broadcast({"tipo": "pesada_auto_aprobada", "pesada_id": pesada_id})
+    else:
+        await manager.broadcast({"tipo": "pesada_pendiente_aprobacion", "pesada_id": pesada_id})
     return resultado["pesada"]
 
 
@@ -108,6 +115,11 @@ async def listar_en_planta():
 @router.get("/pendientes-aprobacion", response_model=list[PesadaOut], dependencies=[Depends(requiere_permiso("pesaje_ver_pendientes_cc"))])
 async def listar_pendientes():
     return await run_in_threadpool(pesaje_service.listar_pendientes_aprobacion)
+
+
+@router.get("/auto-aprobadas", response_model=list[PesadaOut], dependencies=[Depends(requiere_permiso("centro_costos"))])
+async def listar_auto_aprobadas():
+    return await run_in_threadpool(pesaje_service.listar_auto_aprobadas_recientes)
 
 
 @router.get("/aprobadas-pendientes", response_model=list[PesadaOut])

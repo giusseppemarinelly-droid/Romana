@@ -32,6 +32,11 @@ class PesadaOut(BaseModel):
     peso_neto: Optional[float] = None
     peso_final: Optional[float] = None
 
+    codigo_viaje: Optional[str] = None
+    peso_guia: Optional[float] = None
+    bultos: Optional[int] = None
+    auto_aprobado: bool = False
+
     empresa_transportista: Optional[str] = None
     empresa_cliente_proveedor: Optional[str] = None
     cedula_conductor_libre: Optional[str] = None
@@ -78,6 +83,9 @@ class EntradaIn(BaseModel):
 
 class SalidaIn(BaseModel):
     peso_capturado: float
+    codigo_viaje: str
+    peso_guia: float
+    bultos: int
 
 
 class RechazoIn(BaseModel):

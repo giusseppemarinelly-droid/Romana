@@ -137,6 +137,9 @@ class ApiClient:
     def listar_pendientes_aprobacion(self) -> list:
         return self.get("/api/v1/pesadas/pendientes-aprobacion")
 
+    def listar_auto_aprobadas(self) -> list:
+        return self.get("/api/v1/pesadas/auto-aprobadas")
+
     def listar_aprobadas_pendientes(self) -> list:
         return self.get("/api/v1/pesadas/aprobadas-pendientes")
 
@@ -158,10 +161,17 @@ class ApiClient:
             resultado["ticket"] = resultado["pesada"]["numero_ticket"]
         return resultado
 
-    def capturar_salida(self, pesada_id: int, peso_capturado: float) -> dict:
-        resultado = self._con_pesada(self.post(f"/api/v1/pesadas/{pesada_id}/salida", json={"peso_capturado": peso_capturado}))
+    def capturar_salida(self, pesada_id: int, peso_capturado: float,
+                         codigo_viaje: str, peso_guia: float, bultos: int) -> dict:
+        resultado = self._con_pesada(self.post(f"/api/v1/pesadas/{pesada_id}/salida", json={
+            "peso_capturado": peso_capturado,
+            "codigo_viaje": codigo_viaje,
+            "peso_guia": peso_guia,
+            "bultos": bultos,
+        }))
         if resultado["exito"]:
             resultado["peso_neto"] = resultado["pesada"]["peso_neto"]
+            resultado["auto_aprobado"] = resultado["pesada"]["auto_aprobado"]
         return resultado
 
     def aprobar_pesada(self, pesada_id: int) -> dict:
