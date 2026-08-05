@@ -68,20 +68,35 @@ def probar_puerto(puerto: str, baudrate: int, timeout: float = 2.0):
     try:
         print("  Puerto abierto OK.")
 
-        # Primero: escuchar unos segundos sin mandar nada, por si el
+        # Primero: escuchar varios segundos sin mandar nada, por si el
         # display transmite peso continuamente solo (streaming), sin
-        # necesidad de comando.
-        ser.reset_input_buffer()
-        print("  Escuchando 2s sin enviar nada (por si el display transmite solo)...")
+        # necesidad de comando -- algunos indicadores (ej. el que ya
+        # usa Bigsoft en esta planta, configurado a 1000ms) mandan una
+        # trama nueva sola cada cierto intervalo, en vez de responder
+        # a un comando puntual.
         import time
-        time.sleep(2)
-        pendiente = ser.read(ser.in_waiting or 1)
-        if pendiente:
-            print(f"    Recibido sin pedir nada -> raw bytes: {pendiente!r}")
-        else:
-            print("    (nada recibido -- el display no transmite solo, o no vino nada en 2s)")
+        ser.reset_input_buffer()
+        segundos_escucha = 6
+        print(f"  Escuchando {segundos_escucha}s sin enviar nada "
+              f"(por si el display transmite solo, línea por línea)...")
+        fin = time.time() + segundos_escucha
+        lineas = []
+        while time.time() < fin:
+            linea = ser.readline()
+            if linea:
+                lineas.append(linea)
+                try:
+                    texto = linea.decode("ascii", errors="replace")
+                except Exception:
+                    texto = ""
+                print(f"    Línea recibida -> raw: {linea!r}   texto: {texto!r}")
 
-        # Ahora: mandar el comando estándar Toledo 'W\r\n' y ver qué responde
+        if not lineas:
+            print("    (nada recibido en modo escucha pasiva -- el display no")
+            print("     transmite solo, o el timeout por línea cortó antes de completarla)")
+
+        # Ahora: mandar el comando estándar Toledo 'W\r\n' y ver qué responde,
+        # por si el equipo SÍ necesita un comando explícito en vez de streaming.
         ser.reset_input_buffer()
         comando = b"W\r\n"
         print(f"  Enviando comando: {comando!r}")
@@ -102,24 +117,30 @@ def probar_puerto(puerto: str, baudrate: int, timeout: float = 2.0):
 
 
 if __name__ == "__main__":
-    print("DIAGNÓSTICO DE BÁSCULA -- Sistema Romana (Sura de Venezuela)")
-    print()
-    puertos = listar_puertos()
-    print()
+    try:
+        print("DIAGNÓSTICO DE BÁSCULA -- Sistema Romana (Sura de Venezuela)")
+        print()
+        puertos = listar_puertos()
+        print()
 
-    if len(sys.argv) > 1:
-        puerto = sys.argv[1]
-    elif puertos:
-        puerto = input(f"Puerto a probar (Enter = {puertos[0]}): ").strip() or puertos[0]
-    else:
-        puerto = input("Puerto a probar (ej: COM3): ").strip()
+        if len(sys.argv) > 1:
+            puerto = sys.argv[1]
+        elif puertos:
+            puerto = input(f"Puerto a probar (Enter = {puertos[0]}): ").strip() or puertos[0]
+        else:
+            puerto = input("Puerto a probar (ej: COM3): ").strip()
 
-    baud_input = input("Baudrate a probar (Enter = 9600): ").strip()
-    baudrate = int(baud_input) if baud_input else 9600
+        baud_input = input("Baudrate a probar (Enter = 9600): ").strip()
+        baudrate = int(baud_input) if baud_input else 9600
 
+        print()
+        probar_puerto(puerto, baudrate)
+        print()
+        print("=" * 60)
+        print("Copiar TODA esta salida y pegarla en el chat con Claude.")
+        print("=" * 60)
+    except Exception as e:
+        print()
+        print(f"ERROR inesperado: {e}")
     print()
-    probar_puerto(puerto, baudrate)
-    print()
-    print("=" * 60)
-    print("Copiar TODA esta salida y pegarla en el chat con Claude.")
-    print("=" * 60)
+    input("Presiona ENTER para cerrar esta ventana...")

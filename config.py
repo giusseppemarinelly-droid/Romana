@@ -40,8 +40,8 @@ EMPRESA = {
 # CONFIGURACIÓN DEL DISPLAY DE PESAJE (Toledo)
 # -------------------------------------------------------
 DISPLAY = {
-    "marca":     "Simulador",
-    "puerto":    "COM1",
+    "marca":     "Toledo",
+    "puerto":    "COM2",
     "baudrate":  9600,
     "timeout":   2,
     "bits_dato": 8,

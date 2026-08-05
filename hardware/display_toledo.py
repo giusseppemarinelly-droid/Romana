@@ -5,13 +5,30 @@
 # Sus displays se comunican por puerto serial (RS-232 o USB-Serial)
 # usando un protocolo simple de texto ASCII.
 #
-# Protocolo Toledo Standard:
-#   → PC envía:   "W\r\n"  (solicitar peso)
-#   ← Display responde: "+  025340 KG\r\n"
+# Protocolo real confirmado en planta (2026-07-23, display físico de
+# la estación Romana, vía diagnóstico con PowerShell -- ver CLAUDE.md
+# sección "Conexión física de la báscula"):
+#   El display transmite SOLO, en continuo, cada cierto intervalo,
+#   sin necesidad de pedir nada -- ignora el comando 'W\r\n' (la
+#   respuesta con y sin haberlo enviado fue idéntica).
+#   Trama: "ST,GS,+      0kg\r\n"
+#     "ST"      = estado (ST=estable, US=inestable -- inferido por
+#                 convención estándar, no confirmado en sitio porque
+#                 la báscula estaba vacía durante la prueba)
+#     "GS"      = modo (GS=peso bruto/gross, NT=neto -- no relevante
+#                 para este sistema, el neto se calcula en software)
+#     "+"       = signo
+#     "      0" = peso, ancho fijo con relleno de espacios a la
+#                 izquierda (ancho exacto del campo de dígitos sin
+#                 confirmar más allá de 1 dígito, por la misma razón)
+#     "kg"      = unidad, pegada al número sin espacio, minúscula
 #
-# El formato de respuesta varía según el modelo exacto, pero
-# este driver cubre la mayoría de los modelos Toledo Industrial.
+# Formato viejo que este driver asumía antes de la validación en
+# planta ("+  025340 KG ST\r\n", con espacios como separador) --
+# se mantiene el comando CMD_PESO por compatibilidad/inocuo, pero
+# el parser ya no depende de que el display responda a él.
 
+import re
 import time
 from typing import Optional
 
@@ -30,21 +47,28 @@ from hardware.base_display import BaseDisplay
 class DisplayToledo(BaseDisplay):
     """
     Driver para displays/indicadores de peso marca Toledo.
-    Compatible con modelos: 8142, 8141, 9510, IND131, IND331.
 
-    Protocolo:
-      Solicitud: 'W\\r\\n'
-      Respuesta: '+  025340 KG ST\\r\\n'
-        '+' = positivo
-        '025340' = peso en KG (6 dígitos)
-        'ST' = stable (peso estabilizado)
-        'US' = unstable (en movimiento)
+    Protocolo (confirmado en planta 2026-07-23, ver comentario al
+    inicio del archivo): el display transmite solo, en continuo.
+      Trama: 'ST,GS,+      0kg\\r\\n'
+        'ST' = estado (ST=estable, US=inestable)
+        'GS' = modo (GS=bruto, NT=neto -- ignorado, no se usa)
+        '+' = signo
+        '      0' = peso, ancho fijo con relleno de espacios
+        'kg' = unidad, pegada al número sin espacio
     """
 
-    # Comandos del protocolo Toledo
+    # Comandos del protocolo Toledo "clásico" -- el display real de
+    # esta planta los ignora (transmite solo, en continuo), pero se
+    # mantiene el envío por si algún otro modelo Toledo sí los usa.
     CMD_PESO = b"W\r\n"          # Solicitar lectura de peso
     CMD_ZERO = b"Z\r\n"          # Poner en cero
     CMD_TARA = b"T\r\n"          # Tarar
+
+    _PATRON_RESPUESTA = re.compile(
+        r"^(?P<estado>ST|US),(?P<modo>GS|NT),(?P<signo>[+-])\s*"
+        r"(?P<valor>\d+(?:\.\d+)?)\s*(?P<unidad>kg|KG|lb|LB)$"
+    )
 
     def __init__(self, puerto: str = "COM1", baudrate: int = 9600, timeout: int = 2):
         super().__init__(puerto, baudrate, timeout)
@@ -93,8 +117,9 @@ class DisplayToledo(BaseDisplay):
         Solicita y lee el peso actual del display Toledo.
 
         Protocolo:
-          1. Envía 'W\\r\\n' al display
-          2. Lee la respuesta (ej: '+  025340 KG ST\\r\\n')
+          1. Envía 'W\\r\\n' al display (el display lo ignora, ya
+             transmite solo -- se manda igual por si acaso)
+          2. Lee la próxima línea disponible (ej: 'ST,GS,+      0kg\\r\\n')
           3. Parsea el número de peso
           4. Retorna como float
 
@@ -134,7 +159,7 @@ class DisplayToledo(BaseDisplay):
     def peso_estable(self) -> bool:
         """
         Retorna si el último peso leído estaba estabilizado.
-        El display Toledo indica esto con 'ST' al final de la trama.
+        El display Toledo indica esto con 'ST' al inicio de la trama.
         """
         return self._ultimo_estable
 
@@ -142,11 +167,7 @@ class DisplayToledo(BaseDisplay):
         """
         Parsea la respuesta del display Toledo.
 
-        Formato esperado: '+  025340 KG ST'
-          [0]     = signo ('+' o '-')
-          [1:9]   = peso con espacios
-          [9:11]  = unidad ('KG' o 'LB')
-          [12:14] = estado ('ST'=estable, 'US'=inestable)
+        Formato real (ver docstring de la clase): 'ST,GS,+      0kg'
 
         Returns:
             Tupla (peso_float, es_estable) o (None, False) si error.
@@ -156,33 +177,15 @@ class DisplayToledo(BaseDisplay):
         if not respuesta:
             return None, False
 
-        try:
-            # Intentar extraer el número de la respuesta
-            # La respuesta puede variar entre modelos Toledo
-            partes = respuesta.split()
-
-            # Buscar el número de peso en las partes
-            peso = None
-            for parte in partes:
-                # Limpiar signos y verificar si es número
-                limpio = parte.replace("+", "").replace("-", "")
-                if limpio.replace(".", "").isdigit() and len(limpio) > 0:
-                    peso = float(limpio)
-                    if parte.startswith("-"):
-                        peso = -peso
-                    break
-
-            if peso is None:
-                return None, False
-
-            # Verificar estabilidad (buscar 'ST' en la respuesta)
-            estable = "ST" in respuesta and "US" not in respuesta
-
-            return abs(peso), estable  # Retornar valor absoluto
-
-        except (ValueError, IndexError) as e:
-            print(f"⚠️  Error parsing respuesta Toledo '{respuesta}': {e}")
+        match = self._PATRON_RESPUESTA.match(respuesta)
+        if not match:
+            print(f"⚠️  Error parsing respuesta Toledo '{respuesta}': formato no reconocido")
             return None, False
+
+        peso = float(match.group("valor"))
+        estable = match.group("estado") == "ST"
+
+        return abs(peso), estable  # Retornar valor absoluto
 
     def poner_en_cero(self) -> bool:
         """Envía el comando de cero al display."""

@@ -5,3 +5,8 @@ reports/output/
 .env
 *.db
 .pytest_cache/
+build_diagnostico/
+dist_diagnostico/
+CH38XDRV/
+CH35XDRV/
+.claude/
