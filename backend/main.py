@@ -17,14 +17,20 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from config import API_HOST
 from database.engine import crear_tablas
 from backend.routers import auth, pesadas, reportes, admin
 from backend.routers.maestros import todos_los_routers as routers_maestros
+from backend.security import verificar_secreto_de_produccion
 from backend.ws.router import router as ws_router
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # Antes de crear nada: si el secreto JWT sigue siendo el de desarrollo y
+    # el servidor va a escuchar en la red, esto aborta el arranque. Va acá y
+    # no en run_server.py para que también cubra `uvicorn backend.main:app`.
+    verificar_secreto_de_produccion(API_HOST)
     crear_tablas()
     yield
 

@@ -342,3 +342,37 @@ def test_concurrencia_solo_una_entrada_gana_la_carrera():
 
     exitosos = [r for r in resultados if r["exito"]]
     assert len(exitosos) == 1, f"Se esperaba exactamente 1 éxito, hubo {len(exitosos)}: {resultados}"
+
+
+def test_las_lecturas_de_pesadas_exigen_autenticacion(client):
+    """
+    Regresión: los GET de listados, kardex y estadísticas se escribieron sin
+    dependency de autenticación y respondían 200 sin token. Con
+    `API_HOST=0.0.0.0` y CORS abierto, cualquier máquina de la red de planta
+    podía descargar el histórico completo de operaciones sin credenciales.
+    """
+    rutas_lectura = [
+        "/api/v1/pesadas/en-planta",
+        "/api/v1/pesadas/aprobadas-pendientes",
+        "/api/v1/pesadas/completadas",
+        "/api/v1/pesadas/estadisticas",
+        "/api/v1/pesadas/kardex/buscar",
+        "/api/v1/pesadas/vehiculo/1/activa",
+        "/api/v1/pesadas/1",
+    ]
+    for ruta in rutas_lectura:
+        assert client.get(ruta).status_code == 401, f"{ruta} responde sin token"
+
+
+def test_las_lecturas_siguen_disponibles_para_los_cuatro_niveles(
+    client, headers_admin, headers_romana, headers_cc
+):
+    """
+    Complemento del test anterior: cerrar el hueco no debe restringir por rol.
+    Dashboard y kardex los consultan los cuatro niveles, así que exigir un
+    permiso concreto en vez de solo autenticación rompería esas pantallas.
+    """
+    for headers in (headers_admin, headers_romana, headers_cc):
+        assert client.get("/api/v1/pesadas/en-planta", headers=headers).status_code == 200
+        assert client.get("/api/v1/pesadas/estadisticas", headers=headers).status_code == 200
+        assert client.get("/api/v1/pesadas/kardex/buscar", headers=headers).status_code == 200

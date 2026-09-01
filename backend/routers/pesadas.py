@@ -17,7 +17,22 @@ from database.engine import SessionLocal
 from database.models import Usuario, Pesada
 from services import pesaje_service
 
-router = APIRouter(prefix="/pesadas", tags=["pesadas"])
+# Autenticación a nivel de router: TODO endpoint de /pesadas exige un JWT
+# válido, y los `requiere_permiso(...)` de cada ruta se suman a esto en vez de
+# reemplazarlo. Se declara acá y no ruta por ruta porque así el estado por
+# defecto de una ruta nueva es "protegida": los GET de listados, kardex y
+# estadísticas quedaron abiertos justamente por haberse escrito sin dependency,
+# y con `API_HOST=0.0.0.0` cualquier máquina de la red de planta podía
+# descargar el histórico completo de operaciones sin credenciales.
+#
+# Autenticado, no autorizado por rol: los cuatro niveles consultan
+# legítimamente estas lecturas (el dashboard y el kardex los usan todos), así
+# que restringirlas por permiso rompería pantallas sin cerrar ningún hueco real.
+router = APIRouter(
+    prefix="/pesadas",
+    tags=["pesadas"],
+    dependencies=[Depends(get_current_user)],
+)
 
 
 def _fallo_si_no_exito(resultado: dict):

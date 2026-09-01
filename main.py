@@ -71,8 +71,14 @@ def _asegurar_backend():
     if sys.platform == "win32":
         kwargs["creationflags"] = subprocess.CREATE_NEW_CONSOLE
 
+    # Este backend existe solo para la GUI de esta misma máquina, así que se
+    # ata a loopback en vez de al 0.0.0.0 por defecto: no tiene por qué quedar
+    # expuesto a la red de la planta. Es además lo que permite arrancarlo sin
+    # definir ROMANA_JWT_SECRET -- ver verificar_secreto_de_produccion().
+    entorno = {**os.environ, "ROMANA_API_HOST": "127.0.0.1"}
+
     script_servidor = os.path.join(os.path.dirname(os.path.abspath(__file__)), "run_server.py")
-    _proceso_backend = subprocess.Popen([sys.executable, script_servidor], **kwargs)
+    _proceso_backend = subprocess.Popen([sys.executable, script_servidor], env=entorno, **kwargs)
 
     for _ in range(20):  # hasta ~10s -- uvicorn tarda poco en arrancar
         time.sleep(0.5)
