@@ -66,15 +66,28 @@ class DisplayToledo(BaseDisplay):
     CMD_TARA = b"T\r\n"          # Tarar
 
     _PATRON_RESPUESTA = re.compile(
-        r"^(?P<estado>ST|US),(?P<modo>GS|NT),(?P<signo>[+-])\s*"
-        r"(?P<valor>\d+(?:\.\d+)?)\s*(?P<unidad>kg|KG|lb|LB)$"
+        r"^(?P<estado>ST|US|OL|OV),(?P<modo>GS|NT),(?P<signo>[+-])\s*"
+        r"(?P<valor>\d+(?:[.,]\d+)?)\s*(?P<unidad>kg|KG|lb|LB)$"
     )
+
+    # Estados que no son una lectura válida de peso: la báscula está fuera de
+    # rango. Se distinguen de "no entendí la trama" para que el operador vea
+    # una sobrecarga como sobrecarga y no como "sin señal".
+    _ESTADOS_DE_ERROR = {"OL": "sobrecarga", "OV": "sobrecarga"}
+
+    # Cuántas líneas leer antes de rendirse en una sola llamada a leer_peso().
+    # El display transmite en continuo, así que tras vaciar el buffer la
+    # primera línea que llega casi siempre es la cola de una trama cortada a la
+    # mitad: hay que poder descartarla y quedarse con la siguiente entera.
+    # Cuatro alcanza de sobra y acota el tiempo total del peor caso.
+    _MAX_LINEAS_POR_LECTURA = 4
 
     def __init__(self, puerto: str = "COM1", baudrate: int = 9600, timeout: int = 2):
         super().__init__(puerto, baudrate, timeout)
         self._serial: Optional["serial.Serial"] = None
         self._ultimo_peso: Optional[float] = None
         self._ultimo_estable: bool = False
+        self._ultimo_error: Optional[str] = None
 
     def conectar(self) -> bool:
         """
@@ -129,32 +142,69 @@ class DisplayToledo(BaseDisplay):
         if not self.conectado or not self._serial:
             return None
 
+        self._ultimo_error = None
+
         try:
-            # Limpiar buffer de entrada antes de solicitar
+            # Vaciar el buffer para leer el peso de AHORA y no uno acumulado
+            # hace varios segundos, que es justo lo que no sirve al capturar.
             self._serial.reset_input_buffer()
 
-            # Enviar comando de solicitud de peso
+            # El display real de esta planta ignora el comando y transmite
+            # solo; se manda igual por si otro modelo Toledo sí lo necesita.
             self._serial.write(self.CMD_PESO)
 
-            # Esperar y leer la respuesta
-            respuesta = self._serial.readline()
+            # Leer hasta encontrar una trama entera. Vaciar el buffer deja el
+            # cursor en medio de la transmisión en curso, así que la primera
+            # línea suele ser un fragmento ('...,+  25340kg') que no parsea:
+            # antes se devolvía None ahí mismo y la lectura se perdía. Ahora se
+            # descarta y se sigue con la siguiente.
+            for intento in range(self._MAX_LINEAS_POR_LECTURA):
+                linea = self._serial.readline()
 
-            if not respuesta:
-                print("⚠️  Timeout: Display Toledo no respondió")
-                return None
+                if not linea:
+                    # readline vacío = venció el timeout, no hay nada llegando.
+                    # Se corta acá en vez de reintentar: cada intento más
+                    # costaría otro timeout completo bloqueando al llamador.
+                    self._ultimo_error = "sin respuesta"
+                    self._ultimo_estable = False
+                    print("⚠️  Timeout: Display Toledo no respondió")
+                    return None
 
-            # Decodificar y parsear la respuesta
-            peso, estable = self._parsear_respuesta(respuesta.decode("ascii", errors="ignore"))
+                peso, estable, error = self._parsear_respuesta(
+                    linea.decode("ascii", errors="ignore")
+                )
 
-            if peso is not None:
-                self._ultimo_peso = peso
-                self._ultimo_estable = estable
+                if error:
+                    # Fuera de rango: es una respuesta válida del display, no
+                    # una trama rota. No tiene sentido seguir leyendo.
+                    self._ultimo_error = error
+                    self._ultimo_estable = False
+                    print(f"⚠️  Display Toledo reporta {error}")
+                    return None
 
-            return peso
+                if peso is not None:
+                    self._ultimo_peso = peso
+                    self._ultimo_estable = estable
+                    return peso
+
+                # Trama ilegible (fragmento o ruido): probar con la siguiente.
+
+            self._ultimo_error = "tramas ilegibles"
+            self._ultimo_estable = False
+            print(f"⚠️  {self._MAX_LINEAS_POR_LECTURA} tramas seguidas ilegibles del display Toledo")
+            return None
 
         except Exception as e:
+            self._ultimo_error = str(e)
+            self._ultimo_estable = False
             print(f"❌ Error al leer peso del display Toledo: {e}")
             return None
+
+    def ultimo_error(self) -> Optional[str]:
+        """Por qué falló la última lectura ("sobrecarga", "sin respuesta",
+        "tramas ilegibles"), o None si salió bien. Permite que la GUI
+        distinguya una báscula sobrecargada de una desconectada."""
+        return self._ultimo_error
 
     def peso_estable(self) -> bool:
         """
@@ -165,27 +215,44 @@ class DisplayToledo(BaseDisplay):
 
     def _parsear_respuesta(self, respuesta: str):
         """
-        Parsea la respuesta del display Toledo.
+        Parsea una trama del display Toledo.
 
         Formato real (ver docstring de la clase): 'ST,GS,+      0kg'
 
         Returns:
-            Tupla (peso_float, es_estable) o (None, False) si error.
+            Tupla (peso, es_estable, error):
+              (25340.0, True,  None)          trama válida y estable
+              (None,    False, "sobrecarga")  el display avisa fuera de rango
+              (None,    False, None)          trama ilegible -- probar la siguiente
         """
         respuesta = respuesta.strip()
 
         if not respuesta:
-            return None, False
+            return None, False, None
 
         match = self._PATRON_RESPUESTA.match(respuesta)
         if not match:
-            print(f"⚠️  Error parsing respuesta Toledo '{respuesta}': formato no reconocido")
-            return None, False
+            # Sin print: con un display que transmite en continuo, la primera
+            # línea tras vaciar el buffer es normalmente un fragmento, y
+            # avisarlo en cada lectura llenaría la consola de ruido esperado.
+            return None, False, None
 
-        peso = float(match.group("valor"))
+        error = self._ESTADOS_DE_ERROR.get(match.group("estado"))
+        if error:
+            return None, False, error
+
+        # Coma decimal por si el display está configurado en formato europeo.
+        peso = float(match.group("valor").replace(",", "."))
+        if match.group("signo") == "-":
+            peso = -peso
+
+        # El signo se conserva a propósito. Antes se devolvía abs(), así que un
+        # peso negativo -- celda de carga descalibrada, basura sobre la
+        # plataforma, tara mal puesta -- se convertía en un peso positivo
+        # plausible y entraba al sistema como bueno. Quien captura ya exige
+        # peso > 0, así que devolverlo con signo hace que se rechace solo.
         estable = match.group("estado") == "ST"
-
-        return abs(peso), estable  # Retornar valor absoluto
+        return peso, estable, None
 
     def poner_en_cero(self) -> bool:
         """Envía el comando de cero al display."""

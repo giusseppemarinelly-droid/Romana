@@ -21,6 +21,33 @@ def obtener_display() -> Optional[BaseDisplay]:
     return _display_activo
 
 
+def estado_display() -> dict:
+    """
+    Qué display está activo ahora mismo, para que la GUI lo muestre.
+
+    Existe porque el sistema puede terminar corriendo con el simulador (pesos
+    aleatorios de 15 a 55 toneladas) o sin ningún display, y hasta ahora nada
+    en pantalla lo decía: el operador veía kilos y no tenía cómo saber que no
+    venían de la báscula.
+
+    Returns:
+        dict con "hay_display", "es_simulador", "conectado", "marca", "puerto".
+    """
+    if _display_activo is None:
+        return {
+            "hay_display": False, "es_simulador": False, "conectado": False,
+            "marca": DISPLAY["marca"], "puerto": DISPLAY["puerto"],
+        }
+
+    return {
+        "hay_display": True,
+        "es_simulador": isinstance(_display_activo, DisplaySimulador),
+        "conectado": _display_activo.esta_conectado(),
+        "marca": type(_display_activo).__name__.replace("Display", ""),
+        "puerto": _display_activo.puerto,
+    }
+
+
 def inicializar_display(marca: str = None, puerto: str = None, baudrate: int = None) -> dict:
     """
     Inicializa el display según la configuración.

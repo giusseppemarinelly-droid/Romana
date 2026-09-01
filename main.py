@@ -121,7 +121,7 @@ def main():
     print("\n⚖️  Iniciando display de pesaje...")
     try:
         from hardware.display_manager import inicializar_display
-        from config import DISPLAY
+        from config import DISPLAY, PERMITIR_SIMULADOR_COMO_RESPALDO
 
         resultado = inicializar_display(
             marca=DISPLAY["marca"],    # "Simulador" durante desarrollo
@@ -131,13 +131,24 @@ def main():
 
         if resultado["exito"]:
             print(f"✅ {resultado['mensaje']}")
-        else:
-            # Si no hay hardware, usar simulador automáticamente
+        elif PERMITIR_SIMULADOR_COMO_RESPALDO:
             print(f"⚠️  {resultado['mensaje']}")
-            print("   Usando simulador de pesaje como respaldo...")
-            resultado_sim = inicializar_display(marca="Simulador")
-            if not resultado_sim["exito"]:
+            print("   ROMANA_PERMITIR_SIMULADOR=1 → cayendo al simulador (pesos INVENTADOS).")
+            if not inicializar_display(marca="Simulador")["exito"]:
                 print("❌ Error iniciando simulador")
+        else:
+            # Antes se caía al simulador acá, en silencio. El simulador genera
+            # pesos aleatorios de 15 a 55 toneladas y nada en pantalla decía
+            # que estaban inventados: el operador emitía tickets con esos kilos
+            # creyéndolos reales. El caso no es hipotético -- el puerto serie
+            # es de acceso exclusivo, así que basta con que el software
+            # anterior (Bigsoft) haya quedado abierto para que la conexión
+            # falle. Es preferible quedarse sin peso, que se ve, a tener un
+            # peso falso, que no se ve.
+            print(f"❌ {resultado['mensaje']}")
+            print("   La estación arranca SIN báscula: se podrá consultar y aprobar,")
+            print("   pero no capturar pesos hasta resolver la conexión.")
+            print("   Para forzar el simulador (solo pruebas): set ROMANA_PERMITIR_SIMULADOR=1")
 
     except Exception as e:
         print(f"⚠️  Error iniciando display: {e}. Continuando sin display...")

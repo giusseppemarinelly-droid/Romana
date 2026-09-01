@@ -39,15 +39,29 @@ EMPRESA = {
 # -------------------------------------------------------
 # CONFIGURACIÓN DEL DISPLAY DE PESAJE (Toledo)
 # -------------------------------------------------------
+# Overrideable por entorno como el resto de la config: el puerto cambia según
+# a qué máquina esté conectada la báscula (COM2 en la PC de la Romana, con su
+# tarjeta PCIe; otro número en cualquier equipo que use un adaptador
+# USB-serial, que Windows numera solo). Poder cambiarlo con una variable evita
+# editar este archivo para una prueba y tener que acordarse de revertirlo.
+#
+#   set ROMANA_DISPLAY_PUERTO=COM4
+#   set ROMANA_DISPLAY_MARCA=Simulador
 DISPLAY = {
-    "marca":     "Toledo",
-    "puerto":    "COM2",
-    "baudrate":  9600,
+    "marca":     os.environ.get("ROMANA_DISPLAY_MARCA", "Toledo"),
+    "puerto":    os.environ.get("ROMANA_DISPLAY_PUERTO", "COM2"),
+    "baudrate":  int(os.environ.get("ROMANA_DISPLAY_BAUDRATE", "9600")),
     "timeout":   2,
     "bits_dato": 8,
     "paridad":   "N",
     "bits_stop": 1,
 }
+
+# El simulador genera pesos aleatorios de 15 a 55 toneladas. Solo se usa si
+# está pedido explícitamente (marca="Simulador") o si se activa este permiso:
+# NUNCA como respaldo automático de una báscula real que no conectó, porque un
+# operador no tiene forma de notar que los kilos que ve son inventados.
+PERMITIR_SIMULADOR_COMO_RESPALDO = os.environ.get("ROMANA_PERMITIR_SIMULADOR", "0") == "1"
 
 # -------------------------------------------------------
 # CONFIGURACIÓN DE LA BÁSCULA

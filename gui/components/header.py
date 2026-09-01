@@ -6,6 +6,7 @@ import customtkinter as ctk
 from datetime import datetime
 from client.api_client import api_client
 from config import UI
+from hardware.display_manager import estado_display
 
 
 class Header(ctk.CTkFrame):
@@ -52,6 +53,13 @@ class Header(ctk.CTkFrame):
         )
         self._titulo_label.grid(row=0, column=1, padx=(10, 20), pady=15, sticky="w")
 
+        # Estado de la báscula -- visible en TODAS las pantallas, no solo en
+        # las de pesaje. Si el sistema quedó sin display o con el simulador,
+        # el operador tiene que poder notarlo sin ir a buscarlo: los kilos que
+        # muestra el simulador son aleatorios y por fuera son indistinguibles
+        # de los reales.
+        self._badge_bascula(self)
+
         # Reloj
         self._reloj_label = ctk.CTkLabel(
             self,
@@ -59,12 +67,12 @@ class Header(ctk.CTkFrame):
             font=ctk.CTkFont(family=UI["fuente"], size=12),
             text_color=UI["color_muted"]
         )
-        self._reloj_label.grid(row=0, column=2, padx=(0, 16), pady=15)
+        self._reloj_label.grid(row=0, column=3, padx=(0, 16), pady=15)
 
         # Separador vertical
         ctk.CTkFrame(
             self, width=1, fg_color=UI["color_border"]
-        ).grid(row=0, column=3, sticky="ns", pady=12)
+        ).grid(row=0, column=4, sticky="ns", pady=12)
 
         # Usuario logueado con badge de rol
         usuario = api_client.usuario
@@ -78,7 +86,7 @@ class Header(ctk.CTkFrame):
                 usuario["nivel"], ("Usuario", UI["color_muted"]))
 
             user_frame = ctk.CTkFrame(self, fg_color="transparent")
-            user_frame.grid(row=0, column=4, padx=(16, 20), pady=8)
+            user_frame.grid(row=0, column=5, padx=(16, 20), pady=8)
 
             # Badge de rol — usando frame pequeño en lugar de padx/pady en CTkLabel
             badge_frame = ctk.CTkFrame(
@@ -106,7 +114,32 @@ class Header(ctk.CTkFrame):
         # Borde inferior
         ctk.CTkFrame(
             self, height=1, fg_color=UI["color_border"]
-        ).grid(row=1, column=0, columnspan=5, sticky="ew")
+        ).grid(row=1, column=0, columnspan=6, sticky="ew")
+
+    def _badge_bascula(self, parent):
+        """
+        Indicador del origen de los pesos. Solo se dibuja cuando hay algo que
+        advertir: con la báscula real conectada no ocupa lugar, porque ahí es
+        el estado esperado y un badge permanente sería ruido.
+        """
+        estado = estado_display()
+        if estado["conectado"] and not estado["es_simulador"]:
+            return
+
+        if estado["es_simulador"]:
+            texto, color = "◆  SIMULADOR — pesos inventados", UI["color_danger"]
+        elif estado["hay_display"]:
+            texto, color = f"◆  Báscula sin señal ({estado['puerto']})", UI["color_warning"]
+        else:
+            texto, color = f"◆  Sin báscula ({estado['puerto']})", UI["color_warning"]
+
+        badge = ctk.CTkFrame(parent, fg_color=color, corner_radius=4)
+        badge.grid(row=0, column=2, padx=(0, 12), pady=15)
+        ctk.CTkLabel(
+            badge, text=texto,
+            font=ctk.CTkFont(family=UI["fuente"], size=10, weight="bold"),
+            text_color="#ffffff", fg_color="transparent"
+        ).pack(padx=8, pady=3)
 
     def actualizar_titulo(self, titulo: str):
         """Actualiza el título mostrado en el header."""
