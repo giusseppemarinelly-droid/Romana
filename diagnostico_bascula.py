@@ -26,6 +26,12 @@
 
 import sys
 
+# Mismo arreglo que main.py: la consola de Windows usa cp1252 por defecto y
+# rompe los acentos de esta salida, que es justo la que hay que leer y pegar.
+if sys.platform == "win32":
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+
 try:
     import serial
     import serial.tools.list_ports
@@ -48,7 +54,21 @@ def listar_puertos():
     return [p.device for p in puertos]
 
 
-def probar_puerto(puerto: str, baudrate: int, timeout: float = 2.0):
+def volcar_hex(linea: bytes) -> str:
+    """
+    Cada byte en hexadecimal junto a su carácter. Es lo que responde de verdad
+    la pregunta del ancho del campo de peso: cuántos espacios (0x20) hay entre
+    el signo y el primer dígito, y si el relleno es con espacios o con ceros.
+    Mirando solo el texto, '+      0' y '+000000' se parecen demasiado.
+    """
+    partes = []
+    for b in linea:
+        car = chr(b) if 32 <= b < 127 else "·"
+        partes.append(f"{b:02X}={car}")
+    return "  ".join(partes)
+
+
+def probar_puerto(puerto: str, baudrate: int, timeout: float = 2.0, segundos_escucha: int = 6):
     print("-" * 60)
     print(f"Probando {puerto} a {baudrate} bps, 8N1, timeout={timeout}s")
     try:
@@ -76,7 +96,6 @@ def probar_puerto(puerto: str, baudrate: int, timeout: float = 2.0):
         # a un comando puntual.
         import time
         ser.reset_input_buffer()
-        segundos_escucha = 6
         print(f"  Escuchando {segundos_escucha}s sin enviar nada "
               f"(por si el display transmite solo, línea por línea)...")
         fin = time.time() + segundos_escucha
@@ -90,6 +109,7 @@ def probar_puerto(puerto: str, baudrate: int, timeout: float = 2.0):
                 except Exception:
                     texto = ""
                 print(f"    Línea recibida -> raw: {linea!r}   texto: {texto!r}")
+                print(f"                      hex: {volcar_hex(linea)}")
 
         if not lineas:
             print("    (nada recibido en modo escucha pasiva -- el display no")
@@ -104,6 +124,7 @@ def probar_puerto(puerto: str, baudrate: int, timeout: float = 2.0):
         respuesta = ser.readline()
         print(f"  Respuesta cruda (raw bytes): {respuesta!r}")
         if respuesta:
+            print(f"  Respuesta en hex: {volcar_hex(respuesta)}")
             try:
                 print(f"  Respuesta como texto: {respuesta.decode('ascii', errors='replace')!r}")
             except Exception:
@@ -116,25 +137,77 @@ def probar_puerto(puerto: str, baudrate: int, timeout: float = 2.0):
         print("  Puerto cerrado.")
 
 
+# Baudrates que vale la pena barrer si el configurado no devuelve nada legible.
+# Un baudrate equivocado no da error: da bytes de basura o silencio, que es
+# indistinguible de un cable malo si no se prueban otros.
+BAUDRATES_COMUNES = [9600, 4800, 19200, 2400, 38400, 57600, 115200]
+
+
+def _parsear_argumentos(argv):
+    """
+    Modo no interactivo si viene cualquier flag o si la entrada no es una
+    consola (por ejemplo cuando lo lanza otro proceso): sin flags y con
+    consola, sigue preguntando como siempre para poder usarlo a mano.
+    """
+    import argparse
+
+    parser = argparse.ArgumentParser(
+        description="Diagnóstico de la báscula -- Sistema Romana",
+        epilog="Sin argumentos y en una consola, pregunta puerto y baudrate.",
+    )
+    parser.add_argument("puerto", nargs="?", help="Puerto a probar (ej: COM4)")
+    parser.add_argument("-b", "--baudrate", type=int, help="Baudrate (default 9600)")
+    parser.add_argument("-s", "--segundos", type=int, default=6,
+                        help="Segundos de escucha pasiva (default 6)")
+    parser.add_argument("--barrer", action="store_true",
+                        help=f"Probar todos los baudrates comunes: {BAUDRATES_COMUNES}")
+    parser.add_argument("--listar", action="store_true",
+                        help="Solo listar los puertos detectados y salir")
+    return parser.parse_args(argv)
+
+
 if __name__ == "__main__":
+    args = _parsear_argumentos(sys.argv[1:])
+    interactivo = sys.stdin.isatty() and len(sys.argv) == 1
+
     try:
         print("DIAGNÓSTICO DE BÁSCULA -- Sistema Romana (Sura de Venezuela)")
         print()
         puertos = listar_puertos()
         print()
 
-        if len(sys.argv) > 1:
-            puerto = sys.argv[1]
-        elif puertos:
-            puerto = input(f"Puerto a probar (Enter = {puertos[0]}): ").strip() or puertos[0]
-        else:
-            puerto = input("Puerto a probar (ej: COM3): ").strip()
+        if args.listar:
+            sys.exit(0)
 
-        baud_input = input("Baudrate a probar (Enter = 9600): ").strip()
-        baudrate = int(baud_input) if baud_input else 9600
+        puerto = args.puerto
+        if not puerto and interactivo:
+            if puertos:
+                puerto = input(f"Puerto a probar (Enter = {puertos[0]}): ").strip() or puertos[0]
+            else:
+                puerto = input("Puerto a probar (ej: COM3): ").strip()
+        elif not puerto:
+            puerto = puertos[0] if puertos else None
+
+        if not puerto:
+            print("No hay ningún puerto COM para probar.")
+            print("Conectá el adaptador USB-serial y volvé a correr esto.")
+            sys.exit(1)
+
+        baudrate = args.baudrate
+        if baudrate is None and interactivo:
+            entrada = input("Baudrate a probar (Enter = 9600): ").strip()
+            baudrate = int(entrada) if entrada else 9600
+        elif baudrate is None:
+            baudrate = 9600
 
         print()
-        probar_puerto(puerto, baudrate)
+        if args.barrer:
+            for baud in BAUDRATES_COMUNES:
+                probar_puerto(puerto, baud, segundos_escucha=args.segundos)
+                print()
+        else:
+            probar_puerto(puerto, baudrate, segundos_escucha=args.segundos)
+
         print()
         print("=" * 60)
         print("Copiar TODA esta salida y pegarla en el chat con Claude.")
@@ -143,4 +216,5 @@ if __name__ == "__main__":
         print()
         print(f"ERROR inesperado: {e}")
     print()
-    input("Presiona ENTER para cerrar esta ventana...")
+    if interactivo:
+        input("Presiona ENTER para cerrar esta ventana...")
