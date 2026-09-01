@@ -351,6 +351,11 @@ def registrar_entrada(
             estado="en_planta",
             tipo_pesaje=tipo_pesaje,
             fecha_entrada=datetime.now(),
+            # peso_entrada es el registro inmutable del 1er pesaje; peso_bruto
+            # arranca con el mismo valor porque hasta la captura es el único
+            # peso que hay (es lo que muestran kardex, dashboard y CC), pero a
+            # partir de ahí lo reescribe capturar_peso_salida().
+            peso_entrada=round(float(peso_bruto), 2),
             peso_bruto=round(float(peso_bruto), 2),
             vehiculo_id=vehiculo_id,
             conductor_id=conductor_id,
@@ -448,8 +453,21 @@ def capturar_peso_salida(
         if bultos is None or bultos <= 0:
             return {"exito": False, "mensaje": "La cantidad de bultos debe ser mayor a 0"}
 
-        # Calcular neto preliminar (bruto mayor, tara menor)
-        peso1 = float(pesada.peso_bruto)
+        # El neto se calcula SIEMPRE contra peso_entrada, nunca contra
+        # peso_bruto: éste ya fue reescrito con el mayor de los dos pesajes si
+        # hubo una captura anterior (camino rechazo → re-captura), y usarlo
+        # daría un neto contra el número equivocado.
+        if pesada.peso_entrada is None:
+            return {
+                "exito": False,
+                "mensaje": (
+                    f"La pesada {pesada.numero_ticket} es anterior al registro del peso de "
+                    "entrada y ya fue capturada, así que su peso de entrada no se puede "
+                    "recuperar. Anule esta pesada y registre la entrada del camión de nuevo."
+                ),
+            }
+
+        peso1 = float(pesada.peso_entrada)
         peso2 = float(peso_capturado)
 
         if peso2 > peso1:

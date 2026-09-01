@@ -303,8 +303,18 @@ class Pesada(Base):
     fecha_salida             = Column(DateTime, nullable=True)   # Fecha de completado
 
     # --- Pesos (KG) ---
-    peso_bruto               = Column(Numeric(10, 2), nullable=True)  # Peso entrada
-    peso_tara                = Column(Numeric(10, 2), nullable=True)  # Peso salida (2°)
+    # peso_entrada es el ÚNICO registro del 1er pesaje: se escribe una vez en
+    # registrar_entrada() y no se toca nunca más. peso_bruto/peso_tara son el
+    # mayor y el menor de los dos pesajes, y los reescribe cada captura -- por
+    # eso no sirven como fuente del peso de entrada: antes de esta columna, una
+    # re-captura tras un rechazo de CC calculaba el neto contra el bruto de la
+    # captura anterior (entrada 15.000 + capturas 40.000→40.100 daba un neto de
+    # 100 KG en vez de 25.100). Nullable porque las pesadas anteriores a esta
+    # columna no lo tienen; ver capturar_peso_salida(), que se niega a
+    # re-capturar una fila así en vez de adivinar.
+    peso_entrada             = Column(Numeric(10, 2), nullable=True)  # 1er pesaje, inmutable
+    peso_bruto               = Column(Numeric(10, 2), nullable=True)  # Mayor de los dos pesajes
+    peso_tara                = Column(Numeric(10, 2), nullable=True)  # Menor de los dos pesajes
     peso_neto                = Column(Numeric(10, 2), nullable=True)  # Calculado
     peso_final               = Column(Numeric(10, 2), nullable=True)  # 3° peso, antes de autorizar la salida
 

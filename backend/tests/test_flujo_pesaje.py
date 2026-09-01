@@ -188,6 +188,111 @@ def test_diferencia_fuera_de_tolerancia_requiere_aprobacion_manual(client, heade
     client.post(f"/api/v1/pesadas/{pesada_id}/completar", json={"peso_final": 19000}, headers=headers_romana)
 
 
+def test_recaptura_tras_rechazo_conserva_el_peso_de_entrada(client, headers_romana, headers_cc, vehiculo_c_id):
+    """
+    Regresión: `peso_bruto` servía a la vez de "peso de entrada" y de "bruto
+    final", así que la primera captura lo sobrescribía con el mayor de los dos
+    pesajes y el peso de entrada se perdía. Al re-capturar tras un rechazo de
+    Centro de Costos -- el camino que el estado "rechazado" existe para
+    recorrer -- el neto se calculaba contra el bruto anterior en vez de contra
+    la entrada: con entrada 15.000 y capturas de 40.000 → 40.100 el neto daba
+    100 KG en vez de 25.100, y el peso de entrada quedaba irrecuperable.
+
+    El peso de entrada vive ahora en su propia columna `peso_entrada`, que se
+    escribe una sola vez en la entrada y no se toca nunca más.
+    """
+    r = client.post(
+        "/api/v1/pesadas/entrada",
+        json={"peso_bruto": 15000, "vehiculo_id": vehiculo_c_id, "tipo_pesaje": "GENERAL"},
+        headers=headers_romana,
+    )
+    assert r.status_code == 200, r.text
+    pesada_id = r.json()["id"]
+    assert r.json()["peso_entrada"] == 15000
+
+    # 1ª captura: neto 25.000 contra una guía de 15.000 → 66.7%, fuera de
+    # tolerancia, así que va a la cola accionable de Centro de Costos.
+    r = client.post(
+        f"/api/v1/pesadas/{pesada_id}/salida",
+        json={"peso_capturado": 40000, "codigo_viaje": "V-5005", "peso_guia": 15000, "bultos": 20},
+        headers=headers_romana,
+    )
+    assert r.status_code == 200, r.text
+    assert r.json()["estado"] == "pendiente_aprobacion"
+    assert r.json()["peso_neto"] == 25000
+
+    # Centro de Costos rechaza: Romana tiene que volver a pesar.
+    r = client.post(
+        f"/api/v1/pesadas/{pesada_id}/rechazar",
+        json={"motivo": "peso dudoso, repetir el pesaje"},
+        headers=headers_cc,
+    )
+    assert r.status_code == 200, r.text
+    assert r.json()["estado"] == "rechazado"
+    # La entrada sobrevive intacta a la primera captura y al rechazo.
+    assert r.json()["peso_entrada"] == 15000
+
+    # 2ª captura, casi el mismo peso que la primera.
+    r = client.post(
+        f"/api/v1/pesadas/{pesada_id}/salida",
+        json={"peso_capturado": 40100, "codigo_viaje": "V-5005", "peso_guia": 25000, "bultos": 20},
+        headers=headers_romana,
+    )
+    assert r.status_code == 200, r.text
+    pesada = r.json()
+
+    assert pesada["peso_entrada"] == 15000, "el peso de entrada nunca se sobrescribe"
+    assert pesada["peso_tara"] == 15000, "la tara sigue siendo la entrada, no el bruto anterior"
+    assert pesada["peso_bruto"] == 40100
+    assert pesada["peso_neto"] == 25100, "el neto se calcula contra la entrada, no contra el bruto anterior"
+
+    # limpieza: dejar el vehículo libre para no interferir con otros tests
+    client.post(f"/api/v1/pesadas/{pesada_id}/aprobar", headers=headers_cc)
+    client.post(f"/api/v1/pesadas/{pesada_id}/completar",
+                json={"peso_final": 40100}, headers=headers_romana)
+
+
+def test_no_se_puede_recapturar_una_pesada_anterior_a_peso_entrada(client, headers_romana):
+    """
+    Filas migradas desde antes de que existiera `peso_entrada`: si ya habían
+    sido capturadas, su peso de entrada es irrecuperable (peso_bruto/peso_tara
+    quedaron como mayor/menor, sin registro de cuál de los dos fue la entrada).
+    La captura debe negarse con un mensaje accionable en vez de calcular un
+    neto contra el número equivocado -- que es exactamente el bug que esta
+    columna vino a cerrar.
+    """
+    from database.engine import SessionLocal
+    from database.models import Pesada, Vehiculo
+
+    db = SessionLocal()
+    try:
+        vehiculo = Vehiculo(placa="TEST-LEGADO", descripcion="Fila pre-migración", activo=True)
+        db.add(vehiculo)
+        db.commit()
+        db.refresh(vehiculo)
+
+        # Estado en que la migración deja una fila ya capturada: sin peso_entrada.
+        legado = Pesada(
+            numero_ticket="TK-LEGADO", estado="rechazado", tipo_pesaje="GENERAL",
+            peso_entrada=None, peso_bruto=22300, peso_tara=8900, peso_neto=13400,
+            vehiculo_id=vehiculo.id, motivo_rechazo="rechazada antes de la migración",
+        )
+        db.add(legado)
+        db.commit()
+        db.refresh(legado)
+        pesada_id = legado.id
+    finally:
+        db.close()
+
+    r = client.post(
+        f"/api/v1/pesadas/{pesada_id}/salida",
+        json={"peso_capturado": 22400, "codigo_viaje": "V-6006", "peso_guia": 13000, "bultos": 5},
+        headers=headers_romana,
+    )
+    assert r.status_code == 400
+    assert "peso de entrada" in r.json()["detail"].lower()
+
+
 def test_no_se_puede_registrar_dos_pesadas_activas_para_el_mismo_vehiculo(client, headers_romana, vehiculo_b_id):
     r = client.post(
         "/api/v1/pesadas/entrada",

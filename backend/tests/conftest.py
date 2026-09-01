@@ -53,7 +53,8 @@ def _seed():
         _crear_usuario(db, "cc_test", 4)
         vehiculo = models.Vehiculo(placa="TEST-001", descripcion="Camión de prueba", activo=True)
         vehiculo_b = models.Vehiculo(placa="TEST-002", descripcion="Camión de prueba B", activo=True)
-        db.add_all([vehiculo, vehiculo_b])
+        vehiculo_c = models.Vehiculo(placa="TEST-003", descripcion="Camión de prueba C", activo=True)
+        db.add_all([vehiculo, vehiculo_b, vehiculo_c])
         db.commit()
     finally:
         db.close()
@@ -111,5 +112,12 @@ def vehiculo_id(client, headers_romana):
 @pytest.fixture(scope="session")
 def vehiculo_b_id(client, headers_romana):
     r = client.get("/api/v1/vehiculos", params={"search": "TEST-002"}, headers=headers_romana)
+    assert r.status_code == 200, r.text
+    return r.json()[0]["id"]
+
+
+@pytest.fixture(scope="session")
+def vehiculo_c_id(client, headers_romana):
+    r = client.get("/api/v1/vehiculos", params={"search": "TEST-003"}, headers=headers_romana)
     assert r.status_code == 200, r.text
     return r.json()[0]["id"]

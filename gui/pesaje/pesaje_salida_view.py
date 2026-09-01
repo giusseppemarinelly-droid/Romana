@@ -22,6 +22,20 @@ _INPUT_STYLE = dict(
 UMBRAL_APROBACION_PREVIEW_PCT = 10  # Solo para el aviso en pantalla -- el backend decide con el valor real configurado.
 
 
+def _peso_entrada(p):
+    """
+    Peso del 1er pesaje. Se lee de `peso_entrada`, NUNCA de `peso_bruto`: en un
+    camión que vuelve de un rechazo de Centro de Costos, peso_bruto ya fue
+    reescrito con el bruto de la captura anterior, así que mostrarlo (o restarlo)
+    daría un neto contra el número equivocado.
+
+    Devuelve None en pesadas anteriores a esa columna que ya fueron capturadas
+    -- ahí el dato es irrecuperable y el backend se niega a re-capturarlas.
+    """
+    valor = p.get("peso_entrada")
+    return float(valor) if valor is not None else None
+
+
 def _hora(iso_str):
     """La API devuelve fechas como texto ISO 8601 — se parsean para mostrar solo HH:MM."""
     if not iso_str:
@@ -221,7 +235,7 @@ class PesajeSalidaView(ctk.CTkFrame):
                 p["vehiculo"]["placa"] if p["vehiculo"] else "—",
                 tipo,
                 prod_nombre,
-                f"{float(p['peso_bruto'] or 0):,.0f} kg",
+                f"{_peso_entrada(p):,.0f} kg" if _peso_entrada(p) is not None else "—",
                 estado_texto,
                 _hora(p["fecha_entrada"])
             ))
@@ -297,9 +311,10 @@ class PesajeSalidaView(ctk.CTkFrame):
             p["empresa_transportista"] or "—"); row += 1
         self._fila_info(self._detalle_frame, row, "Empresa cliente:",
             p["empresa_cliente_proveedor"] or "—"); row += 1
+        entrada = _peso_entrada(p)
         self._fila_info(self._detalle_frame, row, "Peso entrada:",
-            f"{float(p['peso_bruto'] or 0):,.0f} KG",
-            color=UI["color_accent"]); row += 1
+            f"{entrada:,.0f} KG" if entrada is not None else "no disponible",
+            color=UI["color_accent"] if entrada is not None else UI["color_danger"]); row += 1
 
         # Rechazo previo (si aplica)
         if p["estado"] == "rechazado" and p["motivo_rechazo"]:
@@ -435,10 +450,9 @@ class PesajeSalidaView(ctk.CTkFrame):
             self._lbl_peso_actual.configure(text=f"{peso:,.0f} KG")
 
             # Calcular neto estimado
-            if self._pesada_seleccionada and peso > 0:
-                p1 = float(self._pesada_seleccionada["peso_bruto"] or 0)
-                p2 = float(peso)
-                neto = abs(p2 - p1)
+            p1 = _peso_entrada(self._pesada_seleccionada) if self._pesada_seleccionada else None
+            if p1 is not None and peso > 0:
+                neto = abs(float(peso) - p1)
                 self._lbl_neto_preview.configure(
                     text=f"NETO estimado: {neto:,.0f} KG",
                     text_color=UI["color_accent"]
@@ -490,7 +504,17 @@ class PesajeSalidaView(ctk.CTkFrame):
             messagebox.showerror("Bultos inválido", "Ingrese una cantidad de bultos numérica mayor a 0.")
             return
 
-        p1 = float(self._pesada_seleccionada["peso_bruto"] or 0)
+        p1 = _peso_entrada(self._pesada_seleccionada)
+        if p1 is None:
+            messagebox.showerror(
+                "Peso de entrada no disponible",
+                f"La pesada {self._pesada_seleccionada['numero_ticket']} es anterior al "
+                "registro del peso de entrada y ya fue capturada, así que su peso de "
+                "entrada no se puede recuperar.\n\n"
+                "Anule esta pesada y registre la entrada del camión de nuevo."
+            )
+            return
+
         neto = abs(float(peso) - p1)
         diferencia_pct = abs(neto - peso_guia) / peso_guia * 100
         if diferencia_pct < UMBRAL_APROBACION_PREVIEW_PCT:
