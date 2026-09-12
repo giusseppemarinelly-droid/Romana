@@ -130,13 +130,20 @@ class DisplayToledo(BaseDisplay):
             return None
 
         try:
-            # Limpiar buffer de entrada antes de solicitar
+            # Limpiar buffer de entrada antes de solicitar. El display
+            # transmite en continuo (confirmado en planta), así que el
+            # reset puede caer a mitad de una trama en curso -- la primera
+            # línea leída justo después es siempre sospechosa de venir
+            # cortada. Se descarta y se usa la siguiente, ya completa.
+            # (Reproducido en pruebas de campo 2026-09-12: la primera
+            # lectura tras conectar() vino como 'S,+      0kg' en vez de
+            # 'ST,GS,+      0kg' -- ver hallazgo C-03 de la auditoría.)
             self._serial.reset_input_buffer()
 
             # Enviar comando de solicitud de peso
             self._serial.write(self.CMD_PESO)
 
-            # Esperar y leer la respuesta
+            self._serial.readline()  # descartar: puede venir cortada por el reset
             respuesta = self._serial.readline()
 
             if not respuesta:
