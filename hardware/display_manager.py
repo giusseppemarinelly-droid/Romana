@@ -31,7 +31,7 @@ from typing import Optional
 from config import DISPLAY
 from hardware.base_display import BaseDisplay
 from hardware.display_simulator import DisplaySimulador
-from hardware.display_toledo import DisplayToledo
+from hardware.display_toledo import DisplayToledo, detectar_puerto_toledo
 
 # Confirmado en pruebas de campo 2026-09-12 (captura cruda con marca de
 # tiempo, sin pasar por este módulo): el equipo cambia de trama cada
@@ -120,6 +120,22 @@ def inicializar_display(marca: str = None, puerto: str = None, baudrate: int = N
     if marca.lower() == "simulador":
         display = DisplaySimulador()
     elif marca.lower() == "toledo":
+        # puerto="AUTO" (o vacío): escanear todos los COM disponibles en
+        # vez de fijar uno -- pensado para la tarjeta multipuerto de la
+        # estación Romana, donde Windows puede reasignar el número de
+        # puerto (reinstalación, driver nuevo, otro slot). Confirmado en
+        # pruebas de campo 2026-09-12 que esto también resuelve probar el
+        # sistema en otra máquina (laptop con su propio adaptador
+        # USB-serial en un puerto distinto) sin tocar config.py.
+        if not puerto or puerto.strip().upper() == "AUTO":
+            puerto_detectado = detectar_puerto_toledo(baudrate=baudrate)
+            if not puerto_detectado:
+                return {
+                    "exito": False,
+                    "mensaje": "No se detectó ninguna báscula Toledo respondiendo en ningún puerto COM",
+                    "display": None
+                }
+            puerto = puerto_detectado
         display = DisplayToledo(puerto=puerto, baudrate=baudrate)
     else:
         return {

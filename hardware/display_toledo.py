@@ -36,6 +36,7 @@ from typing import Optional
 # Si no está instalado: pip install pyserial
 try:
     import serial
+    import serial.tools.list_ports
     SERIAL_DISPONIBLE = True
 except ImportError:
     SERIAL_DISPONIBLE = False
@@ -264,3 +265,32 @@ class DisplayToledo(BaseDisplay):
             return True
         except Exception:
             return False
+
+
+def detectar_puerto_toledo(baudrate: int = 9600, timeout: float = 2) -> Optional[str]:
+    """
+    Escanea todos los puertos COM que Windows detecta y devuelve el
+    primero que responda con una trama Toledo real (mismo chequeo que
+    conectar() -- I-02, no solo "el puerto abrió").
+
+    Pensado para la tarjeta multipuerto de la estación Romana (WCH
+    PCI Express-SERIAL, hasta 4 puertos COM de una sola tarjeta según
+    CLAUDE.md): en vez de fijar un número de puerto a mano y que se
+    rompa si Windows lo reasigna (reinstalación, driver nuevo, otro
+    slot), se prueba cada puerto disponible hasta encontrar el que
+    tiene la báscula enchufada. Cada intento usa DisplayToledo.conectar()
+    tal cual, así que no duplica la lógica de confirmación de señal.
+
+    Returns:
+        El nombre del puerto (ej. "COM2") o None si ninguno respondió.
+    """
+    if not SERIAL_DISPONIBLE:
+        return None
+
+    for puerto_info in serial.tools.list_ports.comports():
+        candidato = DisplayToledo(puerto=puerto_info.device, baudrate=baudrate, timeout=timeout)
+        if candidato.conectar():
+            candidato.desconectar()
+            return puerto_info.device
+
+    return None

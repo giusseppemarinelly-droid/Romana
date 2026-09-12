@@ -39,13 +39,19 @@ EMPRESA = {
 # -------------------------------------------------------
 # CONFIGURACIÓN DEL DISPLAY DE PESAJE (Toledo)
 # -------------------------------------------------------
-# Puerto confirmado en la PC de la estación Romana: COM2 (ver CLAUDE.md).
-# Override vía ROMANA_DISPLAY_PUERTO -- para probar contra otro puerto
-# (ej. una laptop de pruebas con un adaptador USB-serial distinto) sin
-# tocar el valor de producción de este archivo.
+# "AUTO": escanea todos los puertos COM disponibles y usa el primero que
+# responda con una trama Toledo real (ver hardware/display_toledo.py,
+# detectar_puerto_toledo()) -- pensado para la tarjeta multipuerto de la
+# estación Romana (WCH PCI Express-SERIAL, hasta 4 puertos COM de una
+# sola tarjeta, ver CLAUDE.md), donde Windows puede reasignar el número
+# de puerto (reinstalación, driver nuevo, otro slot). El puerto ya
+# confirmado en sitio es COM2, pero no hace falta fijarlo a mano.
+# Override vía ROMANA_DISPLAY_PUERTO -- para forzar un puerto puntual en
+# vez de escanear (ej. si hay más de un dispositivo serial y se quiere
+# ser explícito) sin tocar este archivo.
 DISPLAY = {
     "marca":     "Toledo",
-    "puerto":    os.environ.get("ROMANA_DISPLAY_PUERTO", "COM2"),
+    "puerto":    os.environ.get("ROMANA_DISPLAY_PUERTO", "AUTO"),
     "baudrate":  9600,
     "timeout":   2,
     "bits_dato": 8,

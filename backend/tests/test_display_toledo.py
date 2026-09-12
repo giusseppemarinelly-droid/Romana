@@ -138,6 +138,44 @@ def test_conectar_confirma_con_trama_valida(monkeypatch):
     assert d.conectado is True
 
 
+# ---------- detectar_puerto_toledo(): escanea todos los COM ----------
+
+class _FakePortInfo:
+    def __init__(self, device):
+        self.device = device
+
+
+def test_detectar_puerto_encuentra_el_que_responde(monkeypatch):
+    """
+    Simula una tarjeta multipuerto (COM2, COM3, COM4) donde solo COM3
+    tiene la báscula enchufada -- detectar_puerto_toledo() debe probar
+    cada uno y devolver el que responde.
+    """
+    import hardware.display_toledo as mod
+
+    puertos = [_FakePortInfo("COM2"), _FakePortInfo("COM3"), _FakePortInfo("COM4")]
+    monkeypatch.setattr(mod.serial.tools.list_ports, "comports", lambda: puertos)
+
+    def _fake_serial(port, **kwargs):
+        if port == "COM3":
+            return _FakeSerialConectar([b"ST,GS,+      0kg\r\n"])
+        return _FakeSerialConectar([])  # los demás no responden nada
+
+    monkeypatch.setattr(mod.serial, "Serial", _fake_serial)
+
+    assert mod.detectar_puerto_toledo() == "COM3"
+
+
+def test_detectar_puerto_none_si_ninguno_responde(monkeypatch):
+    import hardware.display_toledo as mod
+
+    puertos = [_FakePortInfo("COM2"), _FakePortInfo("COM5")]
+    monkeypatch.setattr(mod.serial.tools.list_ports, "comports", lambda: puertos)
+    monkeypatch.setattr(mod.serial, "Serial", lambda port, **kwargs: _FakeSerialConectar([]))
+
+    assert mod.detectar_puerto_toledo() is None
+
+
 def test_conectar_rechaza_si_no_llega_ninguna_trama_valida(monkeypatch):
     """
     Hallazgo I-02: antes "conectado" significaba solo que el puerto COM
