@@ -162,12 +162,14 @@ class ApiClient:
         return resultado
 
     def capturar_salida(self, pesada_id: int, peso_capturado: float,
-                         codigo_viaje: str, peso_guia: float, bultos: int) -> dict:
+                         codigo_viaje: str, peso_guia: float, bultos: int,
+                         es_manual: bool = False) -> dict:
         resultado = self._con_pesada(self.post(f"/api/v1/pesadas/{pesada_id}/salida", json={
             "peso_capturado": peso_capturado,
             "codigo_viaje": codigo_viaje,
             "peso_guia": peso_guia,
             "bultos": bultos,
+            "es_manual": es_manual,
         }))
         if resultado["exito"]:
             resultado["peso_neto"] = resultado["pesada"]["peso_neto"]

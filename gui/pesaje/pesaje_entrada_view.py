@@ -364,6 +364,18 @@ class PesajeEntradaView(ctk.CTkFrame):
                                        padx=18, pady=(0, 18), sticky="w")
         row += 1
 
+        # ── Procedencia (de dónde viene el producto) ──────────
+        self._seccion(card, "PROCEDENCIA (opcional)", row); row += 1
+
+        self._entry_procedencia = ctk.CTkEntry(
+            card, placeholder_text="De dónde viene el producto (ej. nombre de la finca/planta de origen)",
+            height=40, font=ctk.CTkFont(family=UI["fuente"], size=13),
+            **_INPUT_STYLE,
+        )
+        self._entry_procedencia.grid(row=row, column=0, columnspan=2,
+                                      sticky="ew", padx=18, pady=(4, 18))
+        row += 1
+
         # Cargar productos por defecto (GENERAL)
         self._cargar_productos("GENERAL")
 
@@ -414,7 +426,25 @@ class PesajeEntradaView(ctk.CTkFrame):
             text_color=UI["color_accent"],
             hover_color=UI["color_bg"],
             font=ctk.CTkFont(family=UI["fuente"], size=12)
-        ).grid(row=3, column=0, padx=16, pady=(4, 16), sticky="ew")
+        ).grid(row=3, column=0, padx=16, pady=(4, 8), sticky="ew")
+
+        # ── Peso manual (si la báscula no responde) ───────────
+        self._peso_manual_var = ctk.BooleanVar(value=False)
+        ctk.CTkCheckBox(
+            bascula_card, text="⌨  Ingresar peso manualmente",
+            variable=self._peso_manual_var, command=self._toggle_peso_manual,
+            font=ctk.CTkFont(family=UI["fuente"], size=11),
+            fg_color=UI["color_accent"], hover_color=UI["color_accent_hover"],
+            border_color=UI["color_border"],
+        ).grid(row=4, column=0, padx=16, pady=(0, 4))
+
+        self._entry_peso_manual = ctk.CTkEntry(
+            bascula_card, placeholder_text="Peso en KG",
+            height=36, font=ctk.CTkFont(family=UI["fuente"], size=14),
+            **_INPUT_STYLE,
+        )
+        self._entry_peso_manual.grid(row=5, column=0, padx=16, pady=(0, 16), sticky="ew")
+        self._entry_peso_manual.grid_remove()  # oculto hasta marcar el checkbox
 
         # ── Resumen ───────────────────────────────────────────
         resumen_card = ctk.CTkFrame(panel, fg_color=UI["color_card"],
@@ -691,6 +721,33 @@ class PesajeEntradaView(ctk.CTkFrame):
             )
 
     # ----------------------------------------------------------
+    def _toggle_peso_manual(self):
+        """Muestra/oculta el campo de peso manual según el checkbox."""
+        if self._peso_manual_var.get():
+            self._entry_peso_manual.grid()
+            self._entry_peso_manual.focus()
+        else:
+            self._entry_peso_manual.grid_remove()
+
+    def _obtener_peso(self) -> float:
+        """
+        Peso a usar para registrar: el tipeado a mano si está marcado el
+        checkbox de peso manual, o el que lea la báscula en caso
+        contrario. Pensado para cuando la báscula no responde
+        (mantenimiento, corte de energía al adaptador, etc.) -- ver
+        Pesada.es_manual.
+        """
+        if self._peso_manual_var.get():
+            try:
+                return float(self._entry_peso_manual.get().strip().replace(",", "."))
+            except (ValueError, AttributeError):
+                return 0.0
+        try:
+            return leer_peso_actual() or 0.0
+        except Exception:
+            return 0.0
+
+    # ----------------------------------------------------------
     def _actualizar_peso(self):
         """Lee el peso de la báscula y actualiza la pantalla."""
         try:
@@ -725,15 +782,17 @@ class PesajeEntradaView(ctk.CTkFrame):
     def _registrar(self):
         """Valida y registra la entrada del camión."""
         # Peso
-        try:
-            peso = leer_peso_actual() or 0.0
-        except Exception:
-            peso = 0.0
+        peso = self._obtener_peso()
 
         if peso <= 0:
-            messagebox.showerror("Sin peso",
-                "No hay un peso válido en la báscula.\n"
-                "Asegúrese de que el vehículo esté sobre la báscula y el peso esté estable.")
+            if self._peso_manual_var.get():
+                messagebox.showerror("Sin peso",
+                    "Ingrese un peso manual válido (mayor a 0).")
+            else:
+                messagebox.showerror("Sin peso",
+                    "No hay un peso válido en la báscula.\n"
+                    "Asegúrese de que el vehículo esté sobre la báscula y el peso esté estable.\n\n"
+                    "Si la báscula no responde, puede tildar \"Ingresar peso manualmente\".")
             return
 
         # Vehículo
@@ -824,7 +883,9 @@ class PesajeEntradaView(ctk.CTkFrame):
             proveedor_id=proveedor_id,
             conductor_id=conductor_id,
             cedula_conductor_libre=cedula_conductor,
-            observaciones=""
+            observaciones="",
+            procedencia=self._entry_procedencia.get().strip(),
+            es_manual=self._peso_manual_var.get(),
         )
 
         if resultado["exito"]:
@@ -859,6 +920,10 @@ class PesajeEntradaView(ctk.CTkFrame):
         self._entry_empresa_cp.delete(0, "end")
         self._proveedor_seleccionado = None
         self._lbl_proveedor_info.configure(text="")
+        self._entry_procedencia.delete(0, "end")
+        self._peso_manual_var.set(False)
+        self._entry_peso_manual.delete(0, "end")
+        self._toggle_peso_manual()
         self._lbl_resumen_tipo.configure(text="Tipo: —")
         self._lbl_resumen_prod.configure(text="Producto: —")
         self._lbl_resumen_veh.configure(text="Vehículo: —")

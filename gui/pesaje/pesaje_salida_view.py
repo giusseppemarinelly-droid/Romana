@@ -341,6 +341,25 @@ class PesajeSalidaView(ctk.CTkFrame):
         )
         self._lbl_neto_preview.grid(row=row, column=0, pady=(0, 8)); row += 1
 
+        # Peso manual (si la báscula no responde) -- ver mismo patrón en
+        # pesaje_entrada_view.py.
+        self._peso_manual_var = ctk.BooleanVar(value=False)
+        ctk.CTkCheckBox(
+            self._detalle_frame, text="⌨  Ingresar peso manualmente",
+            variable=self._peso_manual_var, command=self._toggle_peso_manual,
+            font=ctk.CTkFont(family=UI["fuente"], size=11),
+            fg_color=UI["color_accent"], hover_color=UI["color_accent_hover"],
+            border_color=UI["color_border"],
+        ).grid(row=row, column=0, pady=(0, 4)); row += 1
+
+        self._entry_peso_manual = ctk.CTkEntry(
+            self._detalle_frame, placeholder_text="Peso en KG",
+            height=36, font=ctk.CTkFont(family=UI["fuente"], size=13),
+            **_INPUT_STYLE,
+        )
+        self._entry_peso_manual.grid(row=row, column=0, sticky="ew", pady=(0, 8)); row += 1
+        self._entry_peso_manual.grid_remove()
+
         # Separador
         ctk.CTkFrame(self._detalle_frame, height=1,
                       fg_color=UI["color_border"]).grid(
@@ -423,6 +442,27 @@ class PesajeSalidaView(ctk.CTkFrame):
         ).grid(row=0, column=1, sticky="w")
 
     # ----------------------------------------------------------
+    def _toggle_peso_manual(self):
+        """Muestra/oculta el campo de peso manual según el checkbox."""
+        if self._peso_manual_var.get():
+            self._entry_peso_manual.grid()
+            self._entry_peso_manual.focus()
+        else:
+            self._entry_peso_manual.grid_remove()
+
+    def _obtener_peso(self) -> float:
+        """Peso tipeado a mano si está marcado el checkbox, o el de la báscula."""
+        if self._peso_manual_var.get():
+            try:
+                return float(self._entry_peso_manual.get().strip().replace(",", "."))
+            except (ValueError, AttributeError):
+                return 0.0
+        try:
+            return leer_peso_actual() or 0.0
+        except Exception:
+            return 0.0
+
+    # ----------------------------------------------------------
     def _actualizar_peso_live(self):
         """Actualiza el peso en vivo mientras hay un camión seleccionado."""
         if not self._pesada_seleccionada:
@@ -455,17 +495,18 @@ class PesajeSalidaView(ctk.CTkFrame):
         if not self._pesada_seleccionada:
             return
 
-        try:
-            peso = leer_peso_actual() or 0.0
-        except Exception:
-            peso = 0.0
+        peso = self._obtener_peso()
 
         if peso <= 0:
-            messagebox.showerror(
-                "Sin peso",
-                "No hay un peso válido en la báscula.\n"
-                "Asegúrese de que el camión esté sobre la báscula."
-            )
+            if self._peso_manual_var.get():
+                messagebox.showerror("Sin peso", "Ingrese un peso manual válido (mayor a 0).")
+            else:
+                messagebox.showerror(
+                    "Sin peso",
+                    "No hay un peso válido en la báscula.\n"
+                    "Asegúrese de que el camión esté sobre la báscula.\n\n"
+                    "Si la báscula no responde, puede tildar \"Ingresar peso manualmente\"."
+                )
             return
 
         codigo_viaje = self._entry_codigo_viaje.get().strip()
@@ -518,6 +559,7 @@ class PesajeSalidaView(ctk.CTkFrame):
             codigo_viaje=codigo_viaje,
             peso_guia=peso_guia,
             bultos=bultos,
+            es_manual=self._peso_manual_var.get(),
         )
 
         if resultado["exito"]:

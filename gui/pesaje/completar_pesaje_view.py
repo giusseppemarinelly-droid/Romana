@@ -36,6 +36,7 @@ class CompletarPesajeView(ctk.CTkFrame):
         self.callback_navegar = callback_navegar
         self._pesada_seleccionada = None
         self._peso_final_capturado = None
+        self._peso_final_es_manual = False
         self._after_id_peso_final = None
         self._construir()
         self._cargar_lista()
@@ -305,6 +306,7 @@ class CompletarPesajeView(ctk.CTkFrame):
             w.destroy()
 
         self._peso_final_capturado = None
+        self._peso_final_es_manual = False
         row = 0
 
         # Resumen de la pesada
@@ -363,6 +365,24 @@ class CompletarPesajeView(ctk.CTkFrame):
             text_color=UI["color_muted"]
         )
         self._lbl_dif_peso_final.grid(row=row, column=0, pady=(0, 6)); row += 1
+
+        # Peso manual (si la báscula no responde) -- ver mismo patrón en
+        # pesaje_entrada_view.py / pesaje_salida_view.py.
+        self._peso_manual_var = ctk.BooleanVar(value=False)
+        ctk.CTkCheckBox(
+            self._form_frame, text="⌨  Ingresar peso manualmente",
+            variable=self._peso_manual_var, command=self._toggle_peso_manual,
+            font=ctk.CTkFont(family=UI["fuente"], size=11),
+            fg_color=UI["color_accent"], hover_color=UI["color_accent_hover"],
+            border_color=UI["color_border"],
+        ).grid(row=row, column=0, pady=(0, 4)); row += 1
+
+        self._entry_peso_manual = ctk.CTkEntry(
+            self._form_frame, placeholder_text="Peso en KG",
+            height=36, font=ctk.CTkFont(family=UI["fuente"], size=13)
+        )
+        self._entry_peso_manual.grid(row=row, column=0, sticky="ew", pady=(0, 8)); row += 1
+        self._entry_peso_manual.grid_remove()
 
         # Captura explícita -- el peso no se toma en silencio al guardar:
         # el operador tiene que confirmar con este botón que el peso en
@@ -446,6 +466,27 @@ class CompletarPesajeView(ctk.CTkFrame):
         self._actualizar_peso_final()
 
     # ----------------------------------------------------------
+    def _toggle_peso_manual(self):
+        """Muestra/oculta el campo de peso manual según el checkbox."""
+        if self._peso_manual_var.get():
+            self._entry_peso_manual.grid()
+            self._entry_peso_manual.focus()
+        else:
+            self._entry_peso_manual.grid_remove()
+
+    def _obtener_peso(self) -> float:
+        """Peso tipeado a mano si está marcado el checkbox, o el de la báscula."""
+        if self._peso_manual_var.get():
+            try:
+                return float(self._entry_peso_manual.get().strip().replace(",", "."))
+            except (ValueError, AttributeError):
+                return 0.0
+        try:
+            return leer_peso_actual() or 0.0
+        except Exception:
+            return 0.0
+
+    # ----------------------------------------------------------
     def _actualizar_peso_final(self):
         """Lee en vivo el peso de la báscula para el peso final (3er pesaje)."""
         if not self._pesada_seleccionada:
@@ -478,20 +519,23 @@ class CompletarPesajeView(ctk.CTkFrame):
         if not self._pesada_seleccionada:
             return
 
-        try:
-            peso = leer_peso_actual() or 0.0
-        except Exception:
-            peso = 0.0
+        peso = self._obtener_peso()
 
         if peso <= 0:
-            messagebox.showerror("Sin peso",
-                "No hay un peso válido en la báscula.\n"
-                "Asegúrese de que el vehículo esté sobre la báscula.")
+            if self._peso_manual_var.get():
+                messagebox.showerror("Sin peso", "Ingrese un peso manual válido (mayor a 0).")
+            else:
+                messagebox.showerror("Sin peso",
+                    "No hay un peso válido en la báscula.\n"
+                    "Asegúrese de que el vehículo esté sobre la báscula.\n\n"
+                    "Si la báscula no responde, puede tildar \"Ingresar peso manualmente\".")
             return
 
         self._peso_final_capturado = float(peso)
+        self._peso_final_es_manual = self._peso_manual_var.get()
         self._lbl_peso_final_capturado.configure(
-            text=f"✓ Peso final capturado: {peso:,.0f} KG",
+            text=f"✓ Peso final capturado: {peso:,.0f} KG" +
+                 (" (manual)" if self._peso_final_es_manual else ""),
             text_color=UI["color_success"]
         )
 
@@ -557,7 +601,8 @@ class CompletarPesajeView(ctk.CTkFrame):
             orden_compra=orden,
             cantidad=cantidad,
             precintos=precintos,
-            observaciones=obs
+            observaciones=obs,
+            es_manual=self._peso_final_es_manual,
         )
 
         if resultado["exito"]:
