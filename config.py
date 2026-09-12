@@ -131,7 +131,17 @@ JWT_EXPIRE_MINUTES = 12 * 60   # 12 horas — cubre un turno de operador
 
 API_HOST = os.environ.get("ROMANA_API_HOST", "0.0.0.0")
 API_PORT = int(os.environ.get("ROMANA_API_PORT", "8000"))
-API_BASE_URL = os.environ.get("ROMANA_API_URL", "http://localhost:8000")
+# "127.0.0.1", NO "localhost": confirmado en pruebas de campo 2026-09-12
+# que resolver "localhost" en esta red le agrega ~2 SEGUNDOS a cada
+# request -- Windows intenta conectar primero por IPv6 (::1), el
+# backend solo escucha IPv4 (API_HOST=0.0.0.0), y el intento por IPv6
+# tarda ~2s en fallar antes de caer a IPv4. Con la IP explícita se salta
+# ese intento por completo (0.25s vs 2.3s, medido). Como client/
+# api_client.py usa esta URL base para TODAS las llamadas al backend, el
+# impuesto de 2s pegaba en cada pantalla y cada login -- era el motivo
+# real detrás de "el sistema se queda colgado", no algo del código de
+# cada pantalla.
+API_BASE_URL = os.environ.get("ROMANA_API_URL", "http://127.0.0.1:8000")
 
 # -------------------------------------------------------
 # CREAR DIRECTORIOS SI NO EXISTEN
