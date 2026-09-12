@@ -47,6 +47,8 @@ def _pesada_options():
         joinedload(Pesada.usuario_entrada),
         joinedload(Pesada.usuario_salida),
         joinedload(Pesada.aprobado_por),
+        joinedload(Pesada.usuario_completado),
+        joinedload(Pesada.anulado_por),
     ]
 
 
@@ -678,10 +680,19 @@ def completar_pesaje(
         pesada.orden_compra = orden_compra.strip() if orden_compra else None
         pesada.cantidad = round(float(cantidad), 2) if cantidad else None
         pesada.precintos = precintos.strip() if precintos else None
-        pesada.observaciones = observaciones.strip() if observaciones else None
+        # Hallazgo I-06: antes esto pisaba SIEMPRE las observaciones,
+        # incluso con una cadena vacía -- borraba lo que se hubiera
+        # cargado en la entrada. Ahora solo se actualiza si vino un valor.
+        if observaciones:
+            pesada.observaciones = observaciones.strip()
         pesada.estado = "completado"
         pesada.fecha_salida = datetime.now()
-        pesada.usuario_salida_id = _resolver_usuario_id(usuario_id)
+        # usuario_completado_id, NO usuario_salida_id -- son dos actos
+        # distintos (capturar el 2° peso vs. completar el pesaje) y
+        # pueden ser dos operadores de turnos distintos. Antes esto
+        # reescribía usuario_salida_id, perdiendo quién había capturado
+        # el 2° peso (hallazgo I-06).
+        pesada.usuario_completado_id = _resolver_usuario_id(usuario_id)
 
         db.commit()
         pesada = db.query(Pesada).options(*_pesada_options()).filter_by(
@@ -703,7 +714,7 @@ def completar_pesaje(
 # ============================================================
 # ANULACIÓN
 # ============================================================
-def anular_pesada(pesada_id: int, motivo: str) -> dict:
+def anular_pesada(pesada_id: int, motivo: str, usuario_id: Optional[int] = None) -> dict:
     db = SessionLocal()
     try:
         pesada = db.query(Pesada).filter_by(id=pesada_id).first()
@@ -721,6 +732,12 @@ def anular_pesada(pesada_id: int, motivo: str) -> dict:
         pesada.anulada = True
         pesada.estado = "anulado"
         pesada.motivo_anulacion = motivo.strip()
+        # Hallazgo I-05: antes esto ni siquiera recibía usuario_id -- la
+        # anulación, la operación más sensible del sistema después del
+        # cierre, era la única transición de estado sin constancia de
+        # quién la hizo.
+        pesada.anulado_por_id = _resolver_usuario_id(usuario_id)
+        pesada.fecha_anulacion = datetime.now()
         db.commit()
 
         return {"exito": True, "mensaje": f"Pesada {pesada.numero_ticket} anulada"}

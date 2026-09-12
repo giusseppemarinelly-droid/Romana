@@ -100,8 +100,10 @@ async def completar(pesada_id: int, body: CompletarIn, usuario: Usuario = Depend
 
 
 @router.post("/{pesada_id}/anular", dependencies=[Depends(requiere_permiso("pesaje_anular"))])
-async def anular(pesada_id: int, body: AnularIn):
-    resultado = await run_in_threadpool(pesaje_service.anular_pesada, pesada_id, body.motivo)
+async def anular(pesada_id: int, body: AnularIn, usuario: Usuario = Depends(get_current_user)):
+    resultado = await run_in_threadpool(
+        pesaje_service.anular_pesada, pesada_id, body.motivo, usuario_id=usuario.id
+    )
     _fallo_si_no_exito(resultado)
     await manager.broadcast({"tipo": "pesada_anulada", "pesada_id": pesada_id})
     return {"mensaje": resultado["mensaje"]}

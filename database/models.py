@@ -44,6 +44,10 @@ class Usuario(Base):
                                     back_populates="usuario_salida")
     pesadas_aprobadas= relationship("Pesada", foreign_keys="Pesada.aprobado_por_id",
                                     back_populates="aprobado_por")
+    pesadas_completadas = relationship("Pesada", foreign_keys="Pesada.usuario_completado_id",
+                                    back_populates="usuario_completado")
+    pesadas_anuladas = relationship("Pesada", foreign_keys="Pesada.anulado_por_id",
+                                    back_populates="anulado_por")
     cortes           = relationship("Corte", back_populates="usuario")
 
     def __repr__(self):
@@ -351,10 +355,22 @@ class Pesada(Base):
     usuario_entrada_id       = Column(Integer, ForeignKey("usuarios.id"),     nullable=True)
     usuario_salida_id        = Column(Integer, ForeignKey("usuarios.id"),     nullable=True)
     aprobado_por_id          = Column(Integer, ForeignKey("usuarios.id"),     nullable=True)
+    # usuario_completado_id: quién apretó "Completar Pesaje" (peso final +
+    # datos de cierre). Distinto de usuario_salida_id (quién capturó el 2°
+    # peso) -- antes completar_pesaje() reescribía usuario_salida_id con
+    # este usuario, perdiendo quién había hecho la captura real si fueron
+    # operadores de turnos distintos (hallazgo I-06).
+    usuario_completado_id    = Column(Integer, ForeignKey("usuarios.id"),     nullable=True)
 
     # --- Control ---
     anulada                  = Column(Boolean, default=False)
     motivo_anulacion         = Column(Text, nullable=True)
+    # Trazabilidad de la anulación (hallazgo I-05): antes anular_pesada()
+    # ni siquiera recibía usuario_id -- la operación más sensible del
+    # sistema después del cierre era la única que no dejaba constancia de
+    # quién la hizo.
+    anulado_por_id           = Column(Integer, ForeignKey("usuarios.id"),     nullable=True)
+    fecha_anulacion          = Column(DateTime, nullable=True)
 
     # --- Relaciones Python ---
     vehiculo        = relationship("Vehiculo",    back_populates="pesadas")
@@ -372,6 +388,10 @@ class Pesada(Base):
                                   back_populates="pesadas_salida")
     aprobado_por    = relationship("Usuario", foreign_keys=[aprobado_por_id],
                                   back_populates="pesadas_aprobadas")
+    usuario_completado = relationship("Usuario", foreign_keys=[usuario_completado_id],
+                                  back_populates="pesadas_completadas")
+    anulado_por     = relationship("Usuario", foreign_keys=[anulado_por_id],
+                                  back_populates="pesadas_anuladas")
 
     def __repr__(self):
         return f"<Pesada {self.numero_ticket} - {self.estado}>"

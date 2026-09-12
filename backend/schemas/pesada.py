@@ -62,6 +62,9 @@ class PesadaOut(BaseModel):
     usuario_entrada: Optional[UsuarioOut] = None
     usuario_salida: Optional[UsuarioOut] = None
     aprobado_por: Optional[UsuarioOut] = None
+    usuario_completado: Optional[UsuarioOut] = None
+    anulado_por: Optional[UsuarioOut] = None
+    fecha_anulacion: Optional[datetime] = None
 
 
 class EntradaIn(BaseModel):
