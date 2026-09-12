@@ -44,6 +44,16 @@ def test_parsear_respuesta_trama_cortada_no_matchea():
     assert estable is False
 
 
+def test_parsear_respuesta_peso_negativo_propaga_signo():
+    # Confirmado en pruebas de campo 2026-09-12: plataforma vacía marcando
+    # 'ST,GS,-     70kg' con la báscula en medio de un ajuste mecánico.
+    # Antes abs() convertía esto en un +70 plausible (parte del hallazgo
+    # C-03) -- ahora debe devolver el negativo tal cual.
+    peso, estable = _driver()._parsear_respuesta("ST,GS,-     70kg\r\n")
+    assert peso == -70.0
+    assert estable is True
+
+
 def test_parsear_respuesta_vacia():
     peso, estable = _driver()._parsear_respuesta("")
     assert peso is None

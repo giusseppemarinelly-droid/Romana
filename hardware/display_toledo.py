@@ -190,9 +190,21 @@ class DisplayToledo(BaseDisplay):
             return None, False
 
         peso = float(match.group("valor"))
+        if match.group("signo") == "-":
+            peso = -peso
         estable = match.group("estado") == "ST"
 
-        return abs(peso), estable  # Retornar valor absoluto
+        # Se propaga el signo tal cual lo reporta el equipo -- antes se
+        # aplicaba abs() y un peso negativo (celda descalibrada, o
+        # referencia de cero corrida por un ajuste mecánico en curso, ver
+        # hallazgo C-03) se mostraba como un peso positivo plausible.
+        # Confirmado en pruebas de campo 2026-09-12: plataforma vacía
+        # marcando 'ST,GS,-     70kg' mientras se ajustaban tornillos de
+        # nivelación -- con abs() eso se veía como "+70 kg" en pantalla.
+        # Las capturas ya rechazan <= 0 aguas arriba (registrar_entrada,
+        # capturar_peso_salida), así que un negativo se sigue rechazando,
+        # pero ahora con el número real en vez de uno falseado.
+        return peso, estable
 
     def poner_en_cero(self) -> bool:
         """Envía el comando de cero al display."""
