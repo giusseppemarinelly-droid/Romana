@@ -237,3 +237,41 @@ def test_concurrencia_solo_una_entrada_gana_la_carrera():
 
     exitosos = [r for r in resultados if r["exito"]]
     assert len(exitosos) == 1, f"Se esperaba exactamente 1 éxito, hubo {len(exitosos)}: {resultados}"
+
+
+def test_concurrencia_numeros_de_ticket_no_se_repiten():
+    """
+    Hallazgo I-01: generar_numero_ticket() era un read-modify-write sin
+    bloqueo -- dos registrar_entrada() concurrentes (para vehículos
+    DISTINTOS, sin chocar con el índice de pesada activa) podían leer el
+    mismo "ticket_actual" y terminar con el mismo número de ticket.
+    Ahora usa with_for_update() sobre la fila de configuración.
+    """
+    from database.engine import SessionLocal
+    from database.models import Vehiculo
+
+    db = SessionLocal()
+    try:
+        vehiculos_ids = []
+        for i in range(8):
+            v = Vehiculo(placa=f"TEST-TICKET-{i}", descripcion="Solo para este test", activo=True)
+            db.add(v)
+            db.flush()
+            vehiculos_ids.append(v.id)
+        db.commit()
+    finally:
+        db.close()
+
+    def _intentar_entrada(vehiculo_id):
+        return pesaje_service.registrar_entrada(
+            peso_bruto=10000, vehiculo_id=vehiculo_id, tipo_pesaje="GENERAL"
+        )
+
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        resultados = list(pool.map(_intentar_entrada, vehiculos_ids))
+
+    exitosos = [r for r in resultados if r["exito"]]
+    assert len(exitosos) == 8, f"Se esperaban 8 éxitos (vehículos distintos), hubo {len(exitosos)}: {resultados}"
+
+    tickets = [r["ticket"] for r in exitosos]
+    assert len(set(tickets)) == len(tickets), f"Números de ticket repetidos: {tickets}"

@@ -68,10 +68,30 @@ def _set_config(db, clave: str, valor: str):
 
 
 def generar_numero_ticket(db) -> str:
+    """
+    Hallazgo I-01: antes esto era un read-modify-write sin bloqueo, y
+    _set_config() hacía su propio commit() DENTRO de la transacción de
+    registrar_entrada() -- dos entradas concurrentes podían leer el mismo
+    "ticket_actual" y generar el mismo número de ticket (UNIQUE), y si la
+    entrada fallaba después, el contador ya había avanzado igual (hueco
+    en una numeración fiscal).
+
+    Ahora usa with_for_update(): la fila de configuracion queda bloqueada
+    hasta que termine la transacción del caller (registrar_entrada() hace
+    el único commit(), no acá) -- una segunda transacción concurrente
+    espera a que la primera termine antes de leer "ticket_actual", así
+    que nunca ven el mismo valor. En SQLite (tests) with_for_update() es
+    no-op -- no hace falta ahí, la base entera se serializa a nivel de
+    archivo.
+    """
     prefijo = _get_config(db, "prefijo_ticket", "TK")
-    ultimo = int(_get_config(db, "ticket_actual", "0"))
+    cfg = db.query(Configuracion).filter_by(clave="ticket_actual").with_for_update().first()
+    ultimo = int(cfg.valor) if cfg else 0
     nuevo_numero = ultimo + 1
-    _set_config(db, "ticket_actual", str(nuevo_numero))
+    if cfg:
+        cfg.valor = str(nuevo_numero)
+    else:
+        db.add(Configuracion(clave="ticket_actual", valor=str(nuevo_numero)))
     return f"{prefijo}-{nuevo_numero:06d}"
 
 
@@ -344,44 +364,65 @@ def registrar_entrada(
                            f"Debe completar o anular esa operación primero."
             }
 
-        numero_ticket = generar_numero_ticket(db)
+        # Reintento acotado: with_for_update() en generar_numero_ticket()
+        # cierra la colisión de numero_ticket de verdad en Postgres (el
+        # motor real), pero en SQLite (dialecto de los tests) es un no-op
+        # -- ahí la colisión sigue siendo posible bajo concurrencia. En
+        # vez de asumir a ciegas que todo IntegrityError es "vehículo ya
+        # tiene pesada activa" (hallazgo I-01: ese mensaje era falso
+        # cuando la causa real era una colisión de ticket), se distingue
+        # por el texto del error y, si fue el ticket, se reintenta con un
+        # número nuevo -- autocurativo, no hace falta que el operador
+        # vuelva a intentar a mano.
+        ultimo_error = None
+        for _intento in range(3):
+            numero_ticket = generar_numero_ticket(db)
 
-        nueva_pesada = Pesada(
-            numero_ticket=numero_ticket,
-            estado="en_planta",
-            tipo_pesaje=tipo_pesaje,
-            fecha_entrada=datetime.now(),
-            peso_entrada=round(float(peso_bruto), 2),
-            peso_bruto=round(float(peso_bruto), 2),
-            vehiculo_id=vehiculo_id,
-            conductor_id=conductor_id,
-            cedula_conductor_libre=cedula_conductor_libre.strip() if cedula_conductor_libre else None,
-            producto_id=producto_id,
-            proveedor_id=proveedor_id,
-            empresa_transportista_id=empresa_transportista_id,
-            destino_id=destino_id,
-            lote_id=lote_id,
-            remolque_id=remolque_id,
-            contenedor_id=contenedor_id,
-            empresa_transportista=empresa_transportista.strip() if empresa_transportista else None,
-            empresa_cliente_proveedor=empresa_cliente_proveedor.strip() if empresa_cliente_proveedor else None,
-            usuario_entrada_id=_resolver_usuario_id(usuario_id),
-            observaciones=observaciones
-        )
+            nueva_pesada = Pesada(
+                numero_ticket=numero_ticket,
+                estado="en_planta",
+                tipo_pesaje=tipo_pesaje,
+                fecha_entrada=datetime.now(),
+                peso_entrada=round(float(peso_bruto), 2),
+                peso_bruto=round(float(peso_bruto), 2),
+                vehiculo_id=vehiculo_id,
+                conductor_id=conductor_id,
+                cedula_conductor_libre=cedula_conductor_libre.strip() if cedula_conductor_libre else None,
+                producto_id=producto_id,
+                proveedor_id=proveedor_id,
+                empresa_transportista_id=empresa_transportista_id,
+                destino_id=destino_id,
+                lote_id=lote_id,
+                remolque_id=remolque_id,
+                contenedor_id=contenedor_id,
+                empresa_transportista=empresa_transportista.strip() if empresa_transportista else None,
+                empresa_cliente_proveedor=empresa_cliente_proveedor.strip() if empresa_cliente_proveedor else None,
+                usuario_entrada_id=_resolver_usuario_id(usuario_id),
+                observaciones=observaciones
+            )
 
-        db.add(nueva_pesada)
-        try:
-            db.commit()
-        except IntegrityError:
-            # Red de seguridad ante condiciones de carrera: el chequeo de
-            # "activa" de arriba es check-then-act y dos requests
-            # concurrentes para el mismo vehículo podrían pasarlo ambas.
-            # El índice único parcial ux_pesada_activa_por_vehiculo (ver
-            # migración Alembic) es quien realmente lo impide a nivel BD.
-            db.rollback()
+            db.add(nueva_pesada)
+            try:
+                db.commit()
+                break
+            except IntegrityError as e:
+                db.rollback()
+                if "numero_ticket" in str(e).lower():
+                    # Colisión de ticket -- reintentar con un número nuevo.
+                    ultimo_error = e
+                    continue
+                # Cualquier otra restricción: la única otra posible es el
+                # índice único parcial ux_pesada_activa_por_vehiculo (ver
+                # migración Alembic) -- red de seguridad ante el
+                # check-then-act de la validación de "activa" de arriba.
+                return {
+                    "exito": False,
+                    "mensaje": "El vehículo ya tiene una pesada activa (detectado por la base de datos). Intente de nuevo."
+                }
+        else:
             return {
                 "exito": False,
-                "mensaje": "El vehículo ya tiene una pesada activa (detectado por la base de datos). Intente de nuevo."
+                "mensaje": f"No se pudo generar un número de ticket único tras varios intentos: {ultimo_error}"
             }
         db.refresh(nueva_pesada)
         nueva_pesada = db.query(Pesada).options(*_pesada_options()).filter_by(
