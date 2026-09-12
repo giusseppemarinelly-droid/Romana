@@ -33,7 +33,14 @@ from hardware.base_display import BaseDisplay
 from hardware.display_simulator import DisplaySimulador
 from hardware.display_toledo import DisplayToledo
 
-_INTERVALO_LECTURA = 0.5  # segundos entre lecturas del hilo de fondo
+# Confirmado en pruebas de campo 2026-09-12 (captura cruda con marca de
+# tiempo, sin pasar por este módulo): el equipo cambia de trama cada
+# 80-240ms y responde a una persona subiéndose/bajándose de la báscula
+# en ~1s -- no tiene ningún filtro de varios segundos escondido. 0.25s
+# le sigue el ritmo de cerca sin exigirle más de lo que ya transmite
+# solo, y leer_peso_actual()/es_peso_estable() son lecturas en memoria
+# (no tocan el puerto), así que no hay costo extra en sondear seguido.
+_INTERVALO_LECTURA = 0.25  # segundos entre lecturas del hilo de fondo
 _ANTIGUEDAD_MAX = 3.0     # lectura más vieja que esto se trata como "sin señal"
 
 # Display activo (singleton — solo uno a la vez)

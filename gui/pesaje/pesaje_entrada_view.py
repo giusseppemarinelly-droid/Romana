@@ -719,7 +719,7 @@ class PesajeEntradaView(ctk.CTkFrame):
         # memoria actualizada por un hilo de fondo (ver hardware/
         # display_manager.py, hallazgo C-04), así que refrescar seguido
         # es gratis y el operador ve el peso ponerse al día más rápido.
-        self._after_id_peso = self.after(500, self._actualizar_peso)
+        self._after_id_peso = self.after(250, self._actualizar_peso)
 
     # ----------------------------------------------------------
     def _registrar(self):
