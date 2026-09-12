@@ -27,6 +27,7 @@ class PesadaOut(BaseModel):
     fecha_aprobacion: Optional[datetime] = None
     fecha_salida: Optional[datetime] = None
 
+    peso_entrada: Optional[float] = None
     peso_bruto: Optional[float] = None
     peso_tara: Optional[float] = None
     peso_neto: Optional[float] = None

@@ -351,6 +351,7 @@ def registrar_entrada(
             estado="en_planta",
             tipo_pesaje=tipo_pesaje,
             fecha_entrada=datetime.now(),
+            peso_entrada=round(float(peso_bruto), 2),
             peso_bruto=round(float(peso_bruto), 2),
             vehiculo_id=vehiculo_id,
             conductor_id=conductor_id,
@@ -448,8 +449,12 @@ def capturar_peso_salida(
         if bultos is None or bultos <= 0:
             return {"exito": False, "mensaje": "La cantidad de bultos debe ser mayor a 0"}
 
-        # Calcular neto preliminar (bruto mayor, tara menor)
-        peso1 = float(pesada.peso_bruto)
+        # Calcular neto preliminar (bruto mayor, tara menor). Contra
+        # peso_entrada, NO contra peso_bruto -- peso_bruto se reescribe en
+        # cada captura (incluida una re-captura tras un rechazo de CC) y
+        # deja de representar la entrada real; peso_entrada se escribe una
+        # sola vez en registrar_entrada() y nunca cambia (ver C-01).
+        peso1 = float(pesada.peso_entrada)
         peso2 = float(peso_capturado)
 
         if peso2 > peso1:

@@ -175,9 +175,28 @@ def generar_ticket_pdf(pesada) -> bytes:
     # Peso Final es el 3er pesaje (nuevo en este sistema, antes de
     # autorizar la salida) -- se agrega como 3ra columna solo si existe,
     # las pesadas completadas antes de introducir este campo no lo tienen.
+    #
+    # Qué fecha va con TARA y cuál con PESO BRUTO depende de si el camión
+    # entró vacío (TARA = peso de entrada) o entró cargado y salió vacío
+    # -- flujo de descarga, donde es al revés (PESO BRUTO = peso de
+    # entrada). Antes se asumía siempre el primer caso y las horas
+    # quedaban cruzadas en el segundo (hallazgo I-07). peso_entrada
+    # (fijado una sola vez en registrar_entrada(), ver C-01) es la fuente
+    # de verdad de cuál de los dos pesos corresponde a fecha_entrada.
+    if pesada.peso_entrada is not None and pesada.peso_tara is not None and \
+            abs(float(pesada.peso_entrada) - float(pesada.peso_tara)) < 0.01:
+        fecha_tara, fecha_bruto = pesada.fecha_entrada, pesada.fecha_captura
+    elif pesada.peso_entrada is not None and pesada.peso_bruto is not None and \
+            abs(float(pesada.peso_entrada) - float(pesada.peso_bruto)) < 0.01:
+        fecha_tara, fecha_bruto = pesada.fecha_captura, pesada.fecha_entrada
+    else:
+        # Dato legado sin peso_entrada, o la pesada aún no tiene 2ª
+        # captura: mejor esfuerzo con el supuesto anterior.
+        fecha_tara, fecha_bruto = pesada.fecha_entrada, pesada.fecha_captura
+
     columnas_peso = [
-        ("TARA", pesada.fecha_entrada, pesada.peso_tara),
-        ("PESO BRUTO", pesada.fecha_captura, pesada.peso_bruto),
+        ("TARA", fecha_tara, pesada.peso_tara),
+        ("PESO BRUTO", fecha_bruto, pesada.peso_bruto),
     ]
     if pesada.peso_final is not None:
         columnas_peso.append(("PESO FINAL", pesada.fecha_salida, pesada.peso_final))

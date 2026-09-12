@@ -303,8 +303,18 @@ class Pesada(Base):
     fecha_salida             = Column(DateTime, nullable=True)   # Fecha de completado
 
     # --- Pesos (KG) ---
-    peso_bruto               = Column(Numeric(10, 2), nullable=True)  # Peso entrada
-    peso_tara                = Column(Numeric(10, 2), nullable=True)  # Peso salida (2°)
+    # peso_entrada: el 1er pesaje, escrito UNA sola vez en registrar_entrada()
+    # y nunca más. Es la fuente de verdad de "cuánto pesaba el camión al
+    # entrar" -- capturar_peso_salida() siempre calcula bruto/tara contra
+    # este campo, no contra peso_bruto (que si se usara, se pierde en la
+    # primera captura y queda mal en una re-captura tras un rechazo de CC;
+    # ver hallazgo C-01 de la auditoría, commit c97fdcc).
+    peso_entrada              = Column(Numeric(10, 2), nullable=True)
+    # peso_bruto/peso_tara: el mayor/menor entre peso_entrada y el peso
+    # capturado en la salida -- se recalculan en cada capturar_peso_salida()
+    # (incluida una re-captura), a diferencia de peso_entrada.
+    peso_bruto               = Column(Numeric(10, 2), nullable=True)
+    peso_tara                = Column(Numeric(10, 2), nullable=True)
     peso_neto                = Column(Numeric(10, 2), nullable=True)  # Calculado
     peso_final               = Column(Numeric(10, 2), nullable=True)  # 3° peso, antes de autorizar la salida
 
