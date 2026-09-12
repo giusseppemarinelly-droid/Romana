@@ -55,7 +55,7 @@ async def capturar_salida(pesada_id: int, body: SalidaIn, usuario: Usuario = Dep
     resultado = await run_in_threadpool(
         pesaje_service.capturar_peso_salida,
         pesada_id, body.peso_capturado, body.codigo_viaje, body.peso_guia, body.bultos,
-        usuario_id=usuario.id
+        es_manual=body.es_manual, usuario_id=usuario.id
     )
     _fallo_si_no_exito(resultado)
     # Evento clave: dispara el refresco automático en Centro de Costos --

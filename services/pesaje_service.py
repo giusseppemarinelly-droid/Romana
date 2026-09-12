@@ -338,6 +338,8 @@ def registrar_entrada(
     remolque_id: Optional[int] = None,
     contenedor_id: Optional[int] = None,
     observaciones: str = "",
+    procedencia: str = "",
+    es_manual: bool = False,
     usuario_id: Optional[int] = None
 ) -> dict:
     """
@@ -400,7 +402,9 @@ def registrar_entrada(
                 empresa_transportista=empresa_transportista.strip() if empresa_transportista else None,
                 empresa_cliente_proveedor=empresa_cliente_proveedor.strip() if empresa_cliente_proveedor else None,
                 usuario_entrada_id=_resolver_usuario_id(usuario_id),
-                observaciones=observaciones
+                observaciones=observaciones,
+                procedencia=procedencia.strip() if procedencia else None,
+                es_manual=es_manual
             )
 
             db.add(nueva_pesada)
@@ -453,6 +457,7 @@ def capturar_peso_salida(
     codigo_viaje: str,
     peso_guia: float,
     bultos: int,
+    es_manual: bool = False,
     usuario_id: Optional[int] = None
 ) -> dict:
     """
@@ -521,6 +526,7 @@ def capturar_peso_salida(
         pesada.fecha_captura = datetime.now()
         pesada.motivo_rechazo = None  # Limpiar rechazo anterior si hubo
         pesada.usuario_salida_id = _resolver_usuario_id(usuario_id)
+        pesada.es_manual = pesada.es_manual or es_manual
 
         if auto_aprobado:
             pesada.estado = "aprobado"
@@ -650,6 +656,7 @@ def completar_pesaje(
     cantidad: Optional[float] = None,
     precintos: str = "",
     observaciones: str = "",
+    es_manual: bool = False,
     usuario_id: Optional[int] = None
 ) -> dict:
     """
@@ -693,6 +700,7 @@ def completar_pesaje(
         # reescribía usuario_salida_id, perdiendo quién había capturado
         # el 2° peso (hallazgo I-06).
         pesada.usuario_completado_id = _resolver_usuario_id(usuario_id)
+        pesada.es_manual = pesada.es_manual or es_manual
 
         db.commit()
         pesada = db.query(Pesada).options(*_pesada_options()).filter_by(

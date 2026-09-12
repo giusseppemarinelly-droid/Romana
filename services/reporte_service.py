@@ -116,6 +116,11 @@ def generar_ticket_pdf(pesada) -> bytes:
         Paragraph(f"Fecha: {_fmt_solo_fecha(pesada.fecha_salida or pesada.fecha_entrada)}",
                   style_fecha_hdr),
     ]
+    if pesada.es_manual:
+        # Al menos uno de los pesos de esta pesada se tipeó a mano en vez
+        # de leerse de la báscula -- mismo concepto que el "ticket manual"
+        # de Bigsoft, queda visible para quien lo revise después.
+        celda_ticket.append(Paragraph("<b>*** PESO MANUAL ***</b>", style_fecha_hdr))
     tabla_header = Table([[celda_empresa, celda_ticket]], colWidths=[12*cm, 6*cm])
     tabla_header.setStyle(TableStyle([
         ("VALIGN", (0, 0), (-1, -1), "TOP"),
@@ -156,7 +161,7 @@ def generar_ticket_pdf(pesada) -> bytes:
          Paragraph(f"Producto: {producto_txt}", style_lbl)],
         [Paragraph(f"Chofer C.I. {chofer_txt}", style_lbl),
          Paragraph(f"Placa: {placa_txt} &nbsp;&nbsp;&nbsp; Remolque: {remolque_txt}", style_lbl)],
-        [Paragraph("Procedencia:", style_lbl),
+        [Paragraph(f"Procedencia: {pesada.procedencia or '—'}", style_lbl),
          Paragraph(f"Operacion: {operacion_txt}", style_lbl)],
         [Paragraph(f"Transporte: {transporte_txt}", style_lbl),
          Paragraph(f"Orden de Compra: {orden_txt} &nbsp;&nbsp;&nbsp; Cantidad: {cantidad_txt}",
@@ -170,6 +175,21 @@ def generar_ticket_pdf(pesada) -> bytes:
     ]))
     elements.append(tabla_info)
     elements.append(Spacer(1, 8))
+
+    # ---- Datos de guía del transportista (código, peso declarado, bultos) ----
+    # Se capturan junto al 2° peso (services/pesaje_service.capturar_peso_salida,
+    # usados ahí para la tolerancia de aprobación automática de CC) pero
+    # antes no se imprimían en ningún lado del ticket -- el formato de
+    # Bigsoft sí los muestra. Solo se agrega la fila si hay algo que
+    # mostrar (pesadas viejas, antes de este campo, no tienen nada acá).
+    if pesada.codigo_viaje or pesada.peso_guia or pesada.bultos:
+        peso_guia_txt = f"{float(pesada.peso_guia):,.2f} KG" if pesada.peso_guia else "—"
+        elements.append(Paragraph(
+            f"Nº Guía/Viaje: {pesada.codigo_viaje or '—'} &nbsp;&nbsp;&nbsp; "
+            f"Peso Guía (declarado): {peso_guia_txt} &nbsp;&nbsp;&nbsp; "
+            f"Bultos: {pesada.bultos if pesada.bultos is not None else '—'}",
+            style_lbl))
+        elements.append(Spacer(1, 6))
 
     # ---- Tabla de pesadas: Tara / Peso Bruto / Peso Final ----
     # Peso Final es el 3er pesaje (nuevo en este sistema, antes de
@@ -241,6 +261,13 @@ def generar_ticket_pdf(pesada) -> bytes:
                    / float(pesada.cantidad) * 100)
         diferencia_txt = f"{dif_pct:,.2f} %"
 
+    # Peso Promedio = Peso Neto / Bultos -- mismo cálculo que el ticket
+    # de Bigsoft (ahí lo llaman "Peso Promedio"), útil para revisar a
+    # ojo si el peso por bulto/saco es razonable.
+    promedio_txt = "—"
+    if pesada.bultos and pesada.bultos > 0:
+        promedio_txt = f"{float(pesada.peso_neto or 0) / pesada.bultos:,.2f} KG"
+
     style_dif_lbl = ParagraphStyle("dif_lbl", fontName="Courier", fontSize=9)
     style_neto_lbl = ParagraphStyle("neto_lbl", fontName="Courier-Bold", fontSize=10)
     style_neto_val = ParagraphStyle("neto_val", fontName="Courier-Bold", fontSize=16,
@@ -249,6 +276,8 @@ def generar_ticket_pdf(pesada) -> bytes:
     celda_dif = [
         Paragraph("Diferencia c/ Cantidad:", style_dif_lbl),
         Paragraph(diferencia_txt, style_dif_lbl),
+        Paragraph("Peso Promedio (por bulto):", style_dif_lbl),
+        Paragraph(promedio_txt, style_dif_lbl),
     ]
     celda_neto = [
         Paragraph("PESO NETO", style_neto_lbl),

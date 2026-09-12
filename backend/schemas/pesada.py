@@ -37,10 +37,12 @@ class PesadaOut(BaseModel):
     peso_guia: Optional[float] = None
     bultos: Optional[int] = None
     auto_aprobado: bool = False
+    es_manual: bool = False
 
     empresa_transportista: Optional[str] = None
     empresa_cliente_proveedor: Optional[str] = None
     cedula_conductor_libre: Optional[str] = None
+    procedencia: Optional[str] = None
 
     orden_compra: Optional[str] = None
     cantidad: Optional[float] = None
@@ -83,6 +85,8 @@ class EntradaIn(BaseModel):
     remolque_id: Optional[int] = None
     contenedor_id: Optional[int] = None
     observaciones: str = ""
+    procedencia: str = ""
+    es_manual: bool = False
 
 
 class SalidaIn(BaseModel):
@@ -90,6 +94,7 @@ class SalidaIn(BaseModel):
     codigo_viaje: str
     peso_guia: float
     bultos: int
+    es_manual: bool = False
 
 
 class RechazoIn(BaseModel):
@@ -102,6 +107,7 @@ class CompletarIn(BaseModel):
     cantidad: Optional[float] = None
     precintos: str = ""
     observaciones: str = ""
+    es_manual: bool = False
 
 
 class AnularIn(BaseModel):

@@ -327,10 +327,16 @@ class Pesada(Base):
     peso_guia                 = Column(Numeric(10, 2), nullable=True)
     bultos                    = Column(Integer, nullable=True)
     auto_aprobado             = Column(Boolean, default=False, nullable=False)
+    # es_manual: al menos uno de los pesos de esta pesada se tipeó a mano
+    # en vez de leerse de la báscula (mantenimiento, corte de energía al
+    # adaptador, etc.) -- mismo concepto que el "ticket manual" de
+    # Bigsoft, simplificado a un solo flag por pesada.
+    es_manual                 = Column(Boolean, default=False, nullable=False)
 
     # --- Datos de la empresa (texto libre, no FK) ---
     empresa_transportista    = Column(String(150), nullable=True)
     empresa_cliente_proveedor= Column(String(150), nullable=True)
+    procedencia               = Column(String(150), nullable=True)  # de dónde viene el producto (equivalente a "Destino" pero de origen)
     cedula_conductor_libre   = Column(String(30), nullable=True)  # Si no está en maestros
 
     # --- Datos post-aprobación (llena Romana después de que CC aprueba) ---
