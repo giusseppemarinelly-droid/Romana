@@ -39,9 +39,13 @@ EMPRESA = {
 # -------------------------------------------------------
 # CONFIGURACIÓN DEL DISPLAY DE PESAJE (Toledo)
 # -------------------------------------------------------
+# Puerto confirmado en la PC de la estación Romana: COM2 (ver CLAUDE.md).
+# Override vía ROMANA_DISPLAY_PUERTO -- para probar contra otro puerto
+# (ej. una laptop de pruebas con un adaptador USB-serial distinto) sin
+# tocar el valor de producción de este archivo.
 DISPLAY = {
     "marca":     "Toledo",
-    "puerto":    "COM2",
+    "puerto":    os.environ.get("ROMANA_DISPLAY_PUERTO", "COM2"),
     "baudrate":  9600,
     "timeout":   2,
     "bits_dato": 8,

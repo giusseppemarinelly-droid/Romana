@@ -125,13 +125,27 @@ def main():
 
         if resultado["exito"]:
             print(f"✅ {resultado['mensaje']}")
-        else:
-            # Si no hay hardware, usar simulador automáticamente
+        elif DISPLAY["marca"].lower() == "simulador":
+            # Config explícita en modo simulador (desarrollo/pruebas de
+            # escritorio) -- si ni así conecta, es un bug del simulador,
+            # no un fallback.
             print(f"⚠️  {resultado['mensaje']}")
-            print("   Usando simulador de pesaje como respaldo...")
-            resultado_sim = inicializar_display(marca="Simulador")
-            if not resultado_sim["exito"]:
-                print("❌ Error iniciando simulador")
+        else:
+            # Hallazgo C-05: antes, si DISPLAY['marca'] era hardware real
+            # (ej. "Toledo") y no conectaba, el sistema caía SOLO al
+            # simulador -- el operador terminaba pesando con toneladas
+            # inventadas al azar sin ningún aviso más que un print() en
+            # una consola que nadie mira. Ya NO cae automáticamente: la
+            # GUI igual abre (para no bloquear otras tareas), pero sin
+            # display activo leer_peso_actual() devuelve None en todas
+            # las pantallas -- "Sin señal" en vez de un peso, y las
+            # capturas ya rechazan peso <= 0, así que no hay forma de
+            # pesar con datos falsos por accidente. Usar el simulador a
+            # propósito requiere cambiar DISPLAY['marca'] en config.py.
+            print(f"❌ {resultado['mensaje']}")
+            print("   No se activa el simulador automáticamente: la estación no debe pesar")
+            print("   con datos inventados. Revisar cable/puerto/baudrate, o cambiar")
+            print("   DISPLAY['marca'] a 'Simulador' en config.py si esto es un entorno de pruebas.")
 
     except Exception as e:
         print(f"⚠️  Error iniciando display: {e}. Continuando sin display...")
@@ -150,6 +164,11 @@ def main():
         traceback.print_exc()
         sys.exit(1)
     finally:
+        try:
+            from hardware.display_manager import desconectar_display
+            desconectar_display()
+        except Exception:
+            pass  # no bloquear el cierre de la app por esto
         _detener_backend_si_lo_iniciamos()
 
 

@@ -446,7 +446,9 @@ class PesajeSalidaView(ctk.CTkFrame):
         except Exception:
             pass
 
-        self._after_id_peso_live = self.after(2000, self._actualizar_peso_live)
+        # 0.5s: ver comentario equivalente en pesaje_entrada_view.py
+        # (hallazgo C-04 -- leer_peso_actual() ya no bloquea).
+        self._after_id_peso_live = self.after(500, self._actualizar_peso_live)
 
     # ----------------------------------------------------------
     def _capturar_peso(self):

@@ -713,8 +713,13 @@ class PesajeEntradaView(ctk.CTkFrame):
         except Exception:
             self._lbl_peso.configure(text="ERROR")
 
-        # Auto-refrescar cada 3 segundos
-        self._after_id_peso = self.after(3000, self._actualizar_peso)
+        # Auto-refrescar cada 0.5s -- antes eran 3s porque leer_peso_actual()
+        # podía tardar hasta el timeout del driver (2s) si la báscula
+        # callaba y congelar la ventana; ahora solo lee una variable en
+        # memoria actualizada por un hilo de fondo (ver hardware/
+        # display_manager.py, hallazgo C-04), así que refrescar seguido
+        # es gratis y el operador ve el peso ponerse al día más rápido.
+        self._after_id_peso = self.after(500, self._actualizar_peso)
 
     # ----------------------------------------------------------
     def _registrar(self):

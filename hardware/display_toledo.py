@@ -94,11 +94,38 @@ class DisplayToledo(BaseDisplay):
                 timeout=self.timeout
             )
 
-            if self._serial.is_open:
-                self.conectado = True
-                print(f"✅ Display Toledo conectado en {self.puerto} a {self.baudrate} bps")
-                return True
-            return False
+            if not self._serial.is_open:
+                return False
+
+            # Hallazgo I-02: antes "conectado" significaba solo "el puerto
+            # COM abrió", que pasa igual aunque el cable esté desconectado
+            # del lado del display. El equipo transmite en continuo, así
+            # que confirmar la conexión es gratis: se intentan leer un par
+            # de líneas y se exige al menos una trama que parsee bien
+            # antes de dar la conexión por buena.
+            self._serial.reset_input_buffer()
+            señal_confirmada = False
+            for _ in range(3):
+                linea = self._serial.readline()
+                if not linea:
+                    break  # timeout: no llegó nada, no vale la pena seguir
+                peso, _ = self._parsear_respuesta(linea.decode("ascii", errors="ignore"))
+                if peso is not None:
+                    señal_confirmada = True
+                    break
+
+            if not señal_confirmada:
+                print(f"❌ Display Toledo en {self.puerto}: el puerto abrió pero no llegó "
+                      f"ninguna trama válida (¿cable desconectado del otro lado del display, "
+                      f"o equipo apagado?)")
+                self._serial.close()
+                self._serial = None
+                self.conectado = False
+                return False
+
+            self.conectado = True
+            print(f"✅ Display Toledo conectado en {self.puerto} a {self.baudrate} bps")
+            return True
 
         except serial.SerialException as e:
             print(f"❌ Error al conectar con display Toledo en {self.puerto}: {e}")

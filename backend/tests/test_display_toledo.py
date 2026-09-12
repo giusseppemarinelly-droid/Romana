@@ -111,3 +111,48 @@ def test_leer_peso_no_conectado_devuelve_none():
     d = _driver()
     assert d.conectado is False
     assert d.leer_peso() is None
+
+
+# ---------- conectar(): I-02, "conectado" exige señal real ----------
+
+class _FakeSerialConectar(_FakeSerial):
+    """Doble de serial.Serial también para conectar() -- agrega is_open/close."""
+
+    def __init__(self, lineas, is_open=True):
+        super().__init__(lineas)
+        self.is_open = is_open
+        self.cerrado = False
+
+    def close(self):
+        self.cerrado = True
+
+
+def test_conectar_confirma_con_trama_valida(monkeypatch):
+    import hardware.display_toledo as mod
+
+    fake = _FakeSerialConectar([b"ST,GS,+      0kg\r\n"])
+    monkeypatch.setattr(mod.serial, "Serial", lambda **kwargs: fake)
+
+    d = mod.DisplayToledo(puerto="COMX")
+    assert d.conectar() is True
+    assert d.conectado is True
+
+
+def test_conectar_rechaza_si_no_llega_ninguna_trama_valida(monkeypatch):
+    """
+    Hallazgo I-02: antes "conectado" significaba solo que el puerto COM
+    abrió -- pasaba igual con el cable desconectado del lado del
+    display. Ahora exige al menos una trama parseable dentro de los
+    primeros intentos.
+    """
+    import hardware.display_toledo as mod
+
+    # El puerto "abre" pero nunca llega nada -- cable desconectado del
+    # otro lado, o display apagado.
+    fake = _FakeSerialConectar([])
+    monkeypatch.setattr(mod.serial, "Serial", lambda **kwargs: fake)
+
+    d = mod.DisplayToledo(puerto="COMX")
+    assert d.conectar() is False
+    assert d.conectado is False
+    assert fake.cerrado is True  # no deja el puerto abierto a medias
