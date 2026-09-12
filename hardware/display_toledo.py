@@ -103,7 +103,16 @@ class DisplayToledo(BaseDisplay):
             # que confirmar la conexión es gratis: se intentan leer un par
             # de líneas y se exige al menos una trama que parsee bien
             # antes de dar la conexión por buena.
+            #
+            # Timeout corto (0.7s) solo para esta confirmación, no el
+            # self.timeout normal (2s) que usa leer_peso() -- confirmado en
+            # planta que el equipo transmite cada 80-240ms, así que 0.7s por
+            # intento sobra de margen. Con self.timeout el peor caso (nada
+            # conectado) tardaba hasta 6s bloqueado ANTES de que main.py
+            # moviera esta llamada a un hilo de fondo; se deja igual de
+            # corto acá como red de seguridad adicional.
             self._serial.reset_input_buffer()
+            self._serial.timeout = 0.7
             señal_confirmada = False
             for _ in range(3):
                 linea = self._serial.readline()
@@ -113,6 +122,7 @@ class DisplayToledo(BaseDisplay):
                 if peso is not None:
                     señal_confirmada = True
                     break
+            self._serial.timeout = self.timeout  # restaurar para leer_peso()
 
             if not señal_confirmada:
                 print(f"❌ Display Toledo en {self.puerto}: el puerto abrió pero no llegó "

@@ -19,6 +19,7 @@
 import os
 import subprocess
 import sys
+import threading
 import time
 from urllib.parse import urlparse
 
@@ -83,35 +84,13 @@ def _asegurar_backend():
     print("⚠️  El backend no respondió a tiempo. Revisa la ventana del servidor que se abrió.")
 
 
-def _detener_backend_si_lo_iniciamos():
-    if _proceso_backend is not None and _proceso_backend.poll() is None:
-        print("\n🛑 Cerrando backend...")
-        _proceso_backend.terminate()
-
-
-def main():
-    """Función principal — punto de entrada del sistema."""
-    print("=" * 60)
-    print("  🚛 SISTEMA DE ROMANA PARA CAMIONES")
-    print("=" * 60)
-
-    # -------------------------------------------------------
-    # PASO 0: Asegurar que el backend esté disponible
-    # -------------------------------------------------------
-    print("\n🌐 Verificando backend...")
-    try:
-        _asegurar_backend()
-    except Exception as e:
-        print(f"⚠️  No se pudo verificar/iniciar el backend: {e}. Continuando de todas formas...")
-
-    # -------------------------------------------------------
-    # PASO 1: Inicializar display de pesaje
-    # -------------------------------------------------------
-    # La base de datos ya NO se inicializa acá: esta es la estación GUI
-    # (Romana o Centro de Costos), que le habla al backend por HTTP
-    # (ver client/api_client.py) y no necesita conectividad directa a
-    # Postgres. El backend (run_server.py) es quien crea las tablas al
-    # arrancar — ver backend/main.py.
+def _inicializar_display():
+    """
+    Conecta el display de pesaje. Se llama SIEMPRE en un hilo de fondo
+    (ver PASO 1 en main()) -- nunca en el hilo principal, para no
+    congelar la apertura de la ventana si la báscula tarda en responder
+    o no responde.
+    """
     print("\n⚖️  Iniciando display de pesaje...")
     try:
         from hardware.display_manager import inicializar_display
@@ -136,9 +115,9 @@ def main():
             # simulador -- el operador terminaba pesando con toneladas
             # inventadas al azar sin ningún aviso más que un print() en
             # una consola que nadie mira. Ya NO cae automáticamente: la
-            # GUI igual abre (para no bloquear otras tareas), pero sin
-            # display activo leer_peso_actual() devuelve None en todas
-            # las pantallas -- "Sin señal" en vez de un peso, y las
+            # GUI igual abre (no depende de esto, corre en un hilo aparte),
+            # pero sin display activo leer_peso_actual() devuelve None en
+            # todas las pantallas -- "Sin señal" en vez de un peso, y las
             # capturas ya rechazan peso <= 0, así que no hay forma de
             # pesar con datos falsos por accidente. Usar el simulador a
             # propósito requiere cambiar DISPLAY['marca'] en config.py.
@@ -149,6 +128,49 @@ def main():
 
     except Exception as e:
         print(f"⚠️  Error iniciando display: {e}. Continuando sin display...")
+
+
+def _detener_backend_si_lo_iniciamos():
+    if _proceso_backend is not None and _proceso_backend.poll() is None:
+        print("\n🛑 Cerrando backend...")
+        _proceso_backend.terminate()
+
+
+def main():
+    """Función principal — punto de entrada del sistema."""
+    print("=" * 60)
+    print("  🚛 SISTEMA DE ROMANA PARA CAMIONES")
+    print("=" * 60)
+
+    # -------------------------------------------------------
+    # PASO 0: Asegurar que el backend esté disponible
+    # -------------------------------------------------------
+    print("\n🌐 Verificando backend...")
+    try:
+        _asegurar_backend()
+    except Exception as e:
+        print(f"⚠️  No se pudo verificar/iniciar el backend: {e}. Continuando de todas formas...")
+
+    # -------------------------------------------------------
+    # PASO 1: Inicializar display de pesaje (en un hilo de fondo)
+    # -------------------------------------------------------
+    # La base de datos ya NO se inicializa acá: esta es la estación GUI
+    # (Romana o Centro de Costos), que le habla al backend por HTTP
+    # (ver client/api_client.py) y no necesita conectividad directa a
+    # Postgres. El backend (run_server.py) es quien crea las tablas al
+    # arrancar — ver backend/main.py.
+    #
+    # inicializar_display() corre en un hilo de fondo, NUNCA en el hilo
+    # principal: DisplayToledo.conectar() ahora confirma señal real
+    # (hallazgo I-02) intentando leer hasta 3 tramas, cada una con
+    # timeout de hasta 2s -- en el peor caso (display apagado, cable
+    # desconectado) eso son ~6s bloqueados. Antes de este fix corría acá
+    # mismo, síncrono, ANTES de app.mainloop(): toda la aplicación se
+    # sentía "colgada" esos segundos sin ni siquiera mostrar la ventana.
+    # Confirmado en pruebas de campo 2026-09-12. Las pantallas ya toleran
+    # que no haya display todavía -- leer_peso_actual() devuelve None
+    # ("Sin señal") hasta que este hilo termine de conectar.
+    threading.Thread(target=_inicializar_display, daemon=True).start()
 
     # -------------------------------------------------------
     # PASO 2: Lanzar interfaz gráfica
