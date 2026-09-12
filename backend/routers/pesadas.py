@@ -107,7 +107,7 @@ async def anular(pesada_id: int, body: AnularIn):
     return {"mensaje": resultado["mensaje"]}
 
 
-@router.get("/en-planta", response_model=list[PesadaOut])
+@router.get("/en-planta", response_model=list[PesadaOut], dependencies=[Depends(get_current_user)])
 async def listar_en_planta():
     return await run_in_threadpool(pesaje_service.listar_pesadas_en_planta)
 
@@ -122,22 +122,26 @@ async def listar_auto_aprobadas():
     return await run_in_threadpool(pesaje_service.listar_auto_aprobadas_recientes)
 
 
-@router.get("/aprobadas-pendientes", response_model=list[PesadaOut])
+@router.get("/aprobadas-pendientes", response_model=list[PesadaOut], dependencies=[Depends(get_current_user)])
 async def listar_aprobadas_pendientes():
     return await run_in_threadpool(pesaje_service.listar_aprobadas_pendientes_completar)
 
 
-@router.get("/completadas", response_model=list[PesadaOut])
+@router.get("/completadas", response_model=list[PesadaOut], dependencies=[Depends(get_current_user)])
 async def listar_completadas(limit: int = 100):
     return await run_in_threadpool(pesaje_service.listar_pesadas_completadas, limit)
 
 
-@router.get("/estadisticas", response_model=EstadisticasOut)
+@router.get("/estadisticas", response_model=EstadisticasOut, dependencies=[Depends(get_current_user)])
 async def estadisticas():
     return await run_in_threadpool(pesaje_service.obtener_estadisticas_dashboard)
 
 
-@router.get("/kardex/buscar", response_model=list[PesadaOut])
+# reportes_ver (no solo get_current_user): el propio sidebar de la GUI ya
+# oculta el ítem "Kardex" a Centro de Costos (nivel 4) con este mismo
+# permiso -- el backend debe exigir lo mismo que la GUI ya decide mostrar,
+# no solo pedir un token válido de cualquier nivel.
+@router.get("/kardex/buscar", response_model=list[PesadaOut], dependencies=[Depends(requiere_permiso("reportes_ver"))])
 async def kardex(
     fecha_inicio: Optional[datetime] = None,
     fecha_fin: Optional[datetime] = None,
@@ -153,7 +157,7 @@ async def kardex(
     )
 
 
-@router.get("/vehiculo/{vehiculo_id}/activa", response_model=Optional[PesadaOut])
+@router.get("/vehiculo/{vehiculo_id}/activa", response_model=Optional[PesadaOut], dependencies=[Depends(get_current_user)])
 async def pesada_activa_por_vehiculo(vehiculo_id: int):
     return await run_in_threadpool(pesaje_service.get_pesada_en_planta_por_vehiculo, vehiculo_id)
 
@@ -177,6 +181,6 @@ async def listar_cortes(limit: int = 20):
     return await run_in_threadpool(pesaje_service.listar_cortes, limit)
 
 
-@router.get("/{pesada_id}", response_model=PesadaOut)
+@router.get("/{pesada_id}", response_model=PesadaOut, dependencies=[Depends(get_current_user)])
 async def obtener_pesada(pesada_id: int):
     return await _obtener_pesada(pesada_id)
