@@ -27,12 +27,18 @@ TEMPLATES_DIR = os.path.join(BASE_DIR, "reports", "templates")
 # -------------------------------------------------------
 # INFORMACIÓN DE LA EMPRESA
 # -------------------------------------------------------
+# Datos de Sura de Venezuela, C.A. (Planta Guacara) -- de sura.com.ve
+# (nombre, dirección, teléfono, email) cruzado con directorios de
+# empresas (pymesvenezuela.com) para el RIF. El RIF en particular NO
+# está publicado en el sitio oficial de la empresa, solo en un
+# directorio de terceros -- confirmarlo contra un documento real (RIF
+# físico, una factura) antes de imprimir tickets de producción con él.
 EMPRESA = {
-    "nombre":    "MI EMPRESA, C.A.",
-    "rif":       "J-000000000-0",
-    "direccion": "Ciudad, Estado, País",
-    "telefono":  "+58 000-000-0000",
-    "email":     "info@miempresa.com",
+    "nombre":    "SURA DE VENEZUELA, C.A.",
+    "rif":       "J-30622535-8",  # TODO: confirmar contra el RIF físico -- fuente es un directorio de terceros, no SENIAT
+    "direccion": "Zona Industrial Pruinca, Calle 1, Parcela 4, Guacara, Edo. Carabobo, Venezuela",
+    "telefono":  "+58 241 300.1900",
+    "email":     "atencionalcliente@sura.com.ve",
     "logo":      os.path.join(TEMPLATES_DIR, "logo.png"),
 }
 
