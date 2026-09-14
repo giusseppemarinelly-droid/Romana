@@ -14,24 +14,19 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import joinedload
 from config import BASCULA
 from database.engine import SessionLocal
-from database.models import (
-    Pesada, Vehiculo, Conductor, Producto,
-    Proveedor, Destino, Lote, Remolque, Contenedor,
-    Configuracion, Usuario
-)
+from database.models import Pesada, Configuracion, Usuario
 
 
 # ============================================================
 # HELPER: cargar relaciones de Pesada
 # ============================================================
-def _resolver_usuario_id(usuario_id: Optional[int]) -> Optional[int]:
-    """
-    Todas las transiciones de estado se llaman exclusivamente desde
-    backend/routers/pesadas.py, que siempre pasa usuario_id explícito
-    (viene del JWT vía Depends(get_current_user)) — no hay ningún
-    estado de "usuario logueado" a nivel de proceso que resolver acá.
-    """
-    return usuario_id
+# Hallazgo M-02 de la auditoría: acá había un _resolver_usuario_id()
+# que era la función identidad (return usuario_id, nada más) -- su
+# propio docstring explicaba que ya no había nada que resolver desde
+# que las transiciones de estado dejaron de depender de un "usuario
+# logueado" a nivel de proceso. Era indirección pura, hacía parecer que
+# existía una regla donde no la había. Los 7 llamadores usan usuario_id
+# directo ahora.
 
 
 def _pesada_options():
@@ -117,102 +112,15 @@ def generar_numero_ticket(db) -> str:
 
 
 # ============================================================
-# MAESTROS
-# ============================================================
-def buscar_vehiculo_por_placa(placa: str) -> Optional[Vehiculo]:
-    db = SessionLocal()
-    try:
-        return db.query(Vehiculo).filter(
-            Vehiculo.placa == placa.strip().upper(),
-            Vehiculo.activo == True
-        ).first()
-    finally:
-        db.close()
-
-
-def listar_vehiculos_activos() -> list:
-    db = SessionLocal()
-    try:
-        return db.query(Vehiculo).filter_by(activo=True).order_by(Vehiculo.placa).all()
-    finally:
-        db.close()
-
-
-def listar_conductores_activos() -> list:
-    db = SessionLocal()
-    try:
-        return db.query(Conductor).filter_by(activo=True).order_by(Conductor.nombre).all()
-    finally:
-        db.close()
-
-
-def listar_productos_activos() -> list:
-    """Lista todos los productos activos (para kardex y reportes)."""
-    db = SessionLocal()
-    try:
-        return db.query(Producto).filter_by(activo=True).order_by(Producto.nombre).all()
-    finally:
-        db.close()
-
-
-def listar_productos_por_tipo(tipo_pesaje: str) -> list:
-    """
-    Lista productos filtrados por tipo de pesaje.
-    tipo_pesaje: "GENERAL" o "PRODUCTO_TERMINADO"
-    """
-    db = SessionLocal()
-    try:
-        return db.query(Producto).filter_by(
-            activo=True,
-            tipo_pesaje=tipo_pesaje
-        ).order_by(Producto.codigo).all()
-    finally:
-        db.close()
-
-
-def listar_proveedores_activos() -> list:
-    db = SessionLocal()
-    try:
-        return db.query(Proveedor).filter_by(activo=True).order_by(Proveedor.nombre).all()
-    finally:
-        db.close()
-
-
-def listar_destinos_activos() -> list:
-    db = SessionLocal()
-    try:
-        return db.query(Destino).filter_by(activo=True).order_by(Destino.nombre).all()
-    finally:
-        db.close()
-
-
-def listar_lotes_activos() -> list:
-    db = SessionLocal()
-    try:
-        return db.query(Lote).filter_by(activo=True).order_by(Lote.codigo).all()
-    finally:
-        db.close()
-
-
-def listar_remolques_activos() -> list:
-    db = SessionLocal()
-    try:
-        return db.query(Remolque).filter_by(activo=True).order_by(Remolque.placa).all()
-    finally:
-        db.close()
-
-
-def listar_contenedores_activos() -> list:
-    db = SessionLocal()
-    try:
-        return db.query(Contenedor).filter_by(activo=True).order_by(Contenedor.codigo).all()
-    finally:
-        db.close()
-
-
-# ============================================================
 # CONSULTAS DE ESTADO
 # ============================================================
+# Hallazgo M-01 de la auditoría (2026-09-14): esta sección tenía antes
+# un bloque "MAESTROS" -- buscar_vehiculo_por_placa() y ocho
+# listar_*_activos()/listar_productos_por_tipo() -- con cero llamadores
+# en todo el repositorio (confirmado con grep antes de borrar, como
+# pedía la auditoría). Reemplazadas hace tiempo por el CRUD genérico de
+# backend/routers/maestros.py (crear_router_maestro()), que es lo que la
+# GUI usa de verdad para estos maestros.
 def listar_pesadas_en_planta() -> list:
     """Camiones que entraron y están esperando ser cargados."""
     db = SessionLocal()
@@ -223,11 +131,6 @@ def listar_pesadas_en_planta() -> list:
         ).order_by(Pesada.fecha_entrada.desc()).all()
     finally:
         db.close()
-
-
-def listar_pesadas_pendientes() -> list:
-    """Compatibilidad con código anterior — alias de listar_pesadas_en_planta."""
-    return listar_pesadas_en_planta()
 
 
 def listar_pendientes_aprobacion() -> list:
@@ -333,11 +236,6 @@ def get_pesada_en_planta_por_vehiculo(vehiculo_id: int) -> Optional[Pesada]:
         db.close()
 
 
-def get_pesada_pendiente_por_vehiculo(vehiculo_id: int) -> Optional[Pesada]:
-    """Alias para compatibilidad."""
-    return get_pesada_en_planta_por_vehiculo(vehiculo_id)
-
-
 # ============================================================
 # PASO 1: REGISTRO DE ENTRADA
 # ============================================================
@@ -390,16 +288,20 @@ def registrar_entrada(
 
         # Reintento acotado: with_for_update() en generar_numero_ticket()
         # cierra la colisión de numero_ticket de verdad en Postgres (el
-        # motor real), pero en SQLite (dialecto de los tests) es un no-op
-        # -- ahí la colisión sigue siendo posible bajo concurrencia. En
-        # vez de asumir a ciegas que todo IntegrityError es "vehículo ya
-        # tiene pesada activa" (hallazgo I-01: ese mensaje era falso
-        # cuando la causa real era una colisión de ticket), se distingue
-        # por el texto del error y, si fue el ticket, se reintenta con un
-        # número nuevo -- autocurativo, no hace falta que el operador
-        # vuelva a intentar a mano.
+        # motor real, un solo intento alcanza), pero en SQLite (dialecto
+        # de los tests) es un no-op -- ahí la colisión sigue siendo
+        # posible bajo concurrencia, y con contención alta (8 hilos
+        # peleando la misma fila sin lock real) a veces hacen falta más
+        # de 3 reintentos para que todos terminen consiguiendo un número
+        # propio (confirmado con el test de concurrencia: con 3 fallaba
+        # de forma intermitente). En vez de asumir a ciegas que todo
+        # IntegrityError es "vehículo ya tiene pesada activa" (hallazgo
+        # I-01: ese mensaje era falso cuando la causa real era una
+        # colisión de ticket), se distingue por el texto del error y, si
+        # fue el ticket, se reintenta con un número nuevo -- autocurativo,
+        # no hace falta que el operador vuelva a intentar a mano.
         ultimo_error = None
-        for _intento in range(3):
+        for _intento in range(10):
             numero_ticket = generar_numero_ticket(db)
 
             nueva_pesada = Pesada(
@@ -421,7 +323,7 @@ def registrar_entrada(
                 contenedor_id=contenedor_id,
                 empresa_transportista=empresa_transportista.strip() if empresa_transportista else None,
                 empresa_cliente_proveedor=empresa_cliente_proveedor.strip() if empresa_cliente_proveedor else None,
-                usuario_entrada_id=_resolver_usuario_id(usuario_id),
+                usuario_entrada_id=usuario_id,
                 observaciones=observaciones,
                 procedencia=procedencia.strip() if procedencia else None,
                 es_manual=es_manual
@@ -433,18 +335,39 @@ def registrar_entrada(
                 break
             except IntegrityError as e:
                 db.rollback()
-                if "numero_ticket" in str(e).lower():
-                    # Colisión de ticket -- reintentar con un número nuevo.
-                    ultimo_error = e
-                    continue
-                # Cualquier otra restricción: la única otra posible es el
-                # índice único parcial ux_pesada_activa_por_vehiculo (ver
-                # migración Alembic) -- red de seguridad ante el
-                # check-then-act de la validación de "activa" de arriba.
-                return {
-                    "exito": False,
-                    "mensaje": "El vehículo ya tiene una pesada activa (detectado por la base de datos). Intente de nuevo."
-                }
+                # OJO: se clasifica por str(e.orig) -- el error crudo del
+                # driver (sqlite3.IntegrityError / pg8000.dbapi.IntegrityError)
+                # -- y NO por str(e), que es el wrapper de SQLAlchemy. Se
+                # probaron ambas variantes con str(e) primero (buscando
+                # "numero_ticket", después "vehiculo") y las dos fallaban
+                # de la misma forma sutil: str(e) de SQLAlchemy incluye el
+                # SQL completo del INSERT pegado al final
+                # ("[SQL: INSERT INTO pesadas (numero_ticket, ..., vehiculo_id, ...)")],
+                # así que CUALQUIER IntegrityError de este INSERT
+                # "contiene" tanto "numero_ticket" como "vehiculo" en el
+                # texto sin importar cuál restricción falló de verdad --
+                # los nombres de columna están siempre ahí, en la lista de
+                # columnas del INSERT. e.orig es el mensaje real y corto
+                # del driver, sin el SQL pegado.
+                mensaje_driver = str(e.orig).lower()
+
+                # Vehículo activo: identificado por "vehiculo" en el
+                # mensaje real -- portable entre dialectos (SQLite
+                # reporta la columna "pesadas.vehiculo_id", Postgres el
+                # nombre del índice "ux_pesada_activa_por_vehiculo"; no
+                # coinciden exacto entre sí, pero ambos contienen
+                # "vehiculo").
+                if "vehiculo" in mensaje_driver:
+                    return {
+                        "exito": False,
+                        "mensaje": "El vehículo ya tiene una pesada activa (detectado por la base de datos). Intente de nuevo."
+                    }
+                # Cualquier otra cosa (colisión de numero_ticket, o la
+                # carrera de "configuracion.clave" cuando dos hilos crean
+                # la fila "ticket_actual" por primera vez a la vez bajo
+                # SQLite) se reintenta con un número nuevo.
+                ultimo_error = e
+                continue
         else:
             return {
                 "exito": False,
@@ -543,7 +466,17 @@ def capturar_peso_salida(
 
         neto = round(bruto_real - tara_real, 2)
         diferencia_pct = round(abs(neto - float(peso_guia)) / float(peso_guia) * 100, 2)
-        umbral = float(_get_config(db, "tolerancia_aprobacion_pct", "10"))
+        try:
+            umbral = float(_get_config(db, "tolerancia_aprobacion_pct", "10"))
+        except (ValueError, TypeError):
+            # Hallazgo M-04: antes esto no tenía try -- un valor mal
+            # escrito en la pantalla de Configuración (ej. "10,5" con
+            # coma en vez de punto, texto libre sin validar) tumbaba
+            # TODA captura de salida con un error genérico que no
+            # apuntaba a la causa real. Con un valor inválido, se usa el
+            # default documentado (10%) en vez de romper el flujo
+            # completo por un typo en otra pantalla.
+            umbral = 10.0
         auto_aprobado = diferencia_pct < umbral
 
         pesada.peso_tara = round(tara_real, 2)
@@ -554,7 +487,7 @@ def capturar_peso_salida(
         pesada.bultos = int(bultos)
         pesada.fecha_captura = datetime.now()
         pesada.motivo_rechazo = None  # Limpiar rechazo anterior si hubo
-        pesada.usuario_salida_id = _resolver_usuario_id(usuario_id)
+        pesada.usuario_salida_id = usuario_id
         pesada.es_manual = pesada.es_manual or es_manual
 
         if auto_aprobado:
@@ -611,7 +544,7 @@ def aprobar_pesada(pesada_id: int, usuario_id: Optional[int] = None) -> dict:
             }
 
         pesada.estado = "aprobado"
-        pesada.aprobado_por_id = _resolver_usuario_id(usuario_id)
+        pesada.aprobado_por_id = usuario_id
         pesada.fecha_aprobacion = datetime.now()
 
         db.commit()
@@ -658,7 +591,7 @@ def rechazar_pesada(pesada_id: int, motivo: str, usuario_id: Optional[int] = Non
 
         pesada.estado = "rechazado"
         pesada.motivo_rechazo = motivo.strip()
-        pesada.aprobado_por_id = _resolver_usuario_id(usuario_id)
+        pesada.aprobado_por_id = usuario_id
         pesada.fecha_aprobacion = datetime.now()
 
         db.commit()
@@ -731,7 +664,7 @@ def completar_pesaje(
         # pueden ser dos operadores de turnos distintos. Antes esto
         # reescribía usuario_salida_id, perdiendo quién había capturado
         # el 2° peso (hallazgo I-06).
-        pesada.usuario_completado_id = _resolver_usuario_id(usuario_id)
+        pesada.usuario_completado_id = usuario_id
         pesada.es_manual = pesada.es_manual or es_manual
 
         db.commit()
@@ -776,7 +709,7 @@ def anular_pesada(pesada_id: int, motivo: str, usuario_id: Optional[int] = None)
         # anulación, la operación más sensible del sistema después del
         # cierre, era la única transición de estado sin constancia de
         # quién la hizo.
-        pesada.anulado_por_id = _resolver_usuario_id(usuario_id)
+        pesada.anulado_por_id = usuario_id
         pesada.fecha_anulacion = datetime.now()
         db.commit()
 
@@ -808,11 +741,18 @@ def realizar_corte(observaciones: str = "", usuario_id: Optional[int] = None) ->
         fecha_inicio = ultimo_corte.fecha_fin if ultimo_corte else datetime(2000, 1, 1)
         fecha_fin = datetime.now()
 
+        # Hallazgo M-03: el filtro anterior era >= fecha_inicio Y
+        # <= fecha_fin, los dos inclusive -- una pesada cuyo fecha_salida
+        # cayera EXACTO en el instante de corte pertenecía a los dos
+        # períodos (el que termina ahí y el que empieza ahí), contada
+        # dos veces entre este corte y el próximo. Límite superior
+        # exclusivo: el instante exacto pasa a pertenecer solo al corte
+        # que EMPIEZA ahí, no al que termina.
         pesadas = db.query(Pesada).filter(
             Pesada.estado == "completado",
             Pesada.anulada == False,
             Pesada.fecha_salida >= fecha_inicio,
-            Pesada.fecha_salida <= fecha_fin
+            Pesada.fecha_salida < fecha_fin
         ).all()
 
         total_pesadas = len(pesadas)
@@ -828,7 +768,12 @@ def realizar_corte(observaciones: str = "", usuario_id: Optional[int] = None) ->
             fecha_fin=fecha_fin,
             total_pesadas=total_pesadas,
             total_neto_kg=round(total_neto, 2),
-            usuario_id=_resolver_usuario_id(usuario_id) or 1,
+            # Hallazgo M-03: antes "usuario_id or 1" atribuía el corte al
+            # usuario 1 en silencio si faltaba el dato -- usuario_id no
+            # debería faltar nunca (el router siempre pasa el del JWT),
+            # y si algún día falta de verdad, es mejor que el commit()
+            # falle fuerte (columna NOT NULL) a que quede mal atribuido.
+            usuario_id=usuario_id,
             observaciones=observaciones,
             created_at=datetime.now()
         )
