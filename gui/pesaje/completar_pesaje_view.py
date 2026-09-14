@@ -9,7 +9,7 @@ from tkinter import messagebox, ttk
 from datetime import datetime
 from config import UI, REPORTS_DIR
 from client.api_client import api_client, ApiError
-from hardware.display_manager import leer_peso_actual
+from hardware.display_manager import leer_peso_actual, es_peso_estable
 from gui.async_utils import cargar_en_hilo
 import os
 
@@ -529,6 +529,14 @@ class CompletarPesajeView(ctk.CTkFrame):
                     "No hay un peso válido en la báscula.\n"
                     "Asegúrese de que el vehículo esté sobre la báscula.\n\n"
                     "Si la báscula no responde, puede tildar \"Ingresar peso manualmente\".")
+            return
+
+        # Hallazgo I-03: el peso final ya no se puede capturar mientras
+        # todavía está oscilando. No aplica al peso manual.
+        if not self._peso_manual_var.get() and not es_peso_estable():
+            messagebox.showerror("Peso inestable",
+                "El peso todavía se está estabilizando.\n"
+                "Espere a que el indicador diga \"PESO ESTABLE\" antes de capturar.")
             return
 
         self._peso_final_capturado = float(peso)

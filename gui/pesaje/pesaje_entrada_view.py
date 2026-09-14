@@ -795,6 +795,16 @@ class PesajeEntradaView(ctk.CTkFrame):
                     "Si la báscula no responde, puede tildar \"Ingresar peso manualmente\".")
             return
 
+        # Hallazgo I-03: antes se podía registrar con el peso todavía
+        # oscilando -- el cartel de "Estabilizando..." era solo cosmético,
+        # no bloqueaba nada. No aplica al peso manual (no hay báscula de
+        # la que leer estabilidad).
+        if not self._peso_manual_var.get() and not es_peso_estable():
+            messagebox.showerror("Peso inestable",
+                "El peso todavía se está estabilizando.\n"
+                "Espere a que el indicador diga \"PESO ESTABLE\" antes de registrar.")
+            return
+
         # Vehículo
         placa_raw = self._combo_vehiculo.get().strip()
         if not placa_raw or placa_raw == "-- Seleccione --":

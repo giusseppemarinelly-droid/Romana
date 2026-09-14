@@ -12,6 +12,7 @@ from typing import Optional
 from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import joinedload
+from config import BASCULA
 from database.engine import SessionLocal
 from database.models import (
     Pesada, Vehiculo, Conductor, Producto,
@@ -67,6 +68,24 @@ def _set_config(db, clave: str, valor: str):
     else:
         db.add(Configuracion(clave=clave, valor=valor))
     db.commit()
+
+
+def _validar_rango_peso(peso: float) -> Optional[str]:
+    """
+    Hallazgo I-03: los límites físicos declarados en config.BASCULA
+    (capacidad_max/capacidad_min) no se usaban en ningún lado -- cada
+    captura validaba contra un 200 escrito a mano y nada validaba el
+    techo. Una trama corrupta que parseara a un peso absurdo (ej.
+    999.999 kg) entraba al sistema igual. Devuelve el mensaje de error,
+    o None si el peso es válido.
+    """
+    if peso < BASCULA["capacidad_min"]:
+        return (f"Peso muy bajo para un camión ({peso:,.0f} KG). "
+                f"Mínimo configurado: {BASCULA['capacidad_min']:,.0f} KG. Verifique la báscula.")
+    if peso > BASCULA["capacidad_max"]:
+        return (f"Peso excede la capacidad de la báscula ({peso:,.0f} KG). "
+                f"Máximo configurado: {BASCULA['capacidad_max']:,.0f} KG. Verifique la lectura.")
+    return None
 
 
 def generar_numero_ticket(db) -> str:
@@ -351,8 +370,9 @@ def registrar_entrada(
     try:
         if peso_bruto <= 0:
             return {"exito": False, "mensaje": "El peso debe ser mayor a 0"}
-        if peso_bruto < 200:
-            return {"exito": False, "mensaje": "Peso muy bajo para un camión. Verifique la báscula"}
+        error_rango = _validar_rango_peso(float(peso_bruto))
+        if error_rango:
+            return {"exito": False, "mensaje": error_rango}
 
         # Verificar si el vehículo ya tiene una pesada activa
         activa = db.query(Pesada).filter(
@@ -487,6 +507,9 @@ def capturar_peso_salida(
 
         if peso_capturado <= 0:
             return {"exito": False, "mensaje": "El peso debe ser mayor a 0"}
+        error_rango = _validar_rango_peso(float(peso_capturado))
+        if error_rango:
+            return {"exito": False, "mensaje": error_rango}
 
         if not codigo_viaje or not codigo_viaje.strip():
             return {"exito": False, "mensaje": "Debe ingresar el código del viaje"}
@@ -682,6 +705,9 @@ def completar_pesaje(
 
         if peso_final <= 0:
             return {"exito": False, "mensaje": "El peso final debe ser mayor a 0"}
+        error_rango = _validar_rango_peso(float(peso_final))
+        if error_rango:
+            return {"exito": False, "mensaje": error_rango}
 
         pesada.peso_final = round(float(peso_final), 2)
         pesada.orden_compra = orden_compra.strip() if orden_compra else None

@@ -509,6 +509,14 @@ class PesajeSalidaView(ctk.CTkFrame):
                 )
             return
 
+        # Hallazgo I-03: el peso ya no se puede capturar mientras todavía
+        # está oscilando. No aplica al peso manual.
+        if not self._peso_manual_var.get() and not es_peso_estable():
+            messagebox.showerror("Peso inestable",
+                "El peso todavía se está estabilizando.\n"
+                "Espere a que el indicador diga \"PESO ESTABLE\" antes de capturar.")
+            return
+
         codigo_viaje = self._entry_codigo_viaje.get().strip()
         peso_guia_txt = self._entry_peso_guia.get().strip()
         bultos_txt = self._entry_bultos.get().strip()
