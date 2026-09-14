@@ -189,16 +189,14 @@ Primera jornada de pruebas con el cable serial conectado de verdad (laptop de pr
 - **I-05/I-06**: `anular_pesada()` ahora recibe `usuario_id` y guarda `anulado_por_id`/`fecha_anulacion` (migración `f6a7b8c9d0e1`). `completar_pesaje()` ya no pisa `observaciones` con una cadena vacía, y usa `usuario_completado_id` (nuevo campo) en vez de reescribir `usuario_salida_id`.
 - **`ejecutar_prueba_laptop.bat`** (raíz del repo, NO commiteado — es local a la laptop de pruebas): igual que `ejecutar.bat` pero pensado para forzar un puerto puntual si `AUTO` no alcanza. Con la auto-detección ya no debería hacer falta, pero se deja documentado por si acaso.
 
-### Pendiente para la próxima visita — antes de instalar en la PC real
+### Auditoría original — estado final (cerrada 2026-09-14)
 
-De la auditoría original, quedan sin resolver (ninguno crítico, pero conviene cerrarlos antes de producción):
+Todos los hallazgos de severidad Crítico e Importante están resueltos, y de los Menores solo queda uno (M-05, ver abajo). Resumen de lo resuelto en las sesiones del 12 y 14 de septiembre: C-01 a C-05, I-01 a I-10 (I-08 con fail-fast real, no solo advertencia), M-01 a M-04. Ver los commits de esas fechas para el detalle de cada uno -- los mensajes de commit documentan el razonamiento completo, no hace falta repetirlo acá.
 
-- **I-03**: ninguna captura exige peso estable (`es_peso_estable()` solo pinta un cartel, no bloquea), y los límites físicos de `config.BASCULA` (`capacidad_max`/`capacidad_min`/`division`) no se validan contra las capturas reales.
-- **I-09**: el login distingue "usuario no existe" de "contraseña incorrecta" (permite enumerar usuarios), sin límite de intentos fallidos ni longitud mínima de contraseña.
-- **I-10**: los `except Exception` genéricos de `pesaje_service.py` devuelven el mensaje de error interno tal cual al cliente (filtra SQL/rutas del servidor a la pantalla).
-- **I-08 (parcial)**: el arranque solo *advierte* si queda el secreto JWT de desarrollo -- antes de exponer el backend a la red real de planta, tiene que *fallar* el arranque en vez de solo avisar.
-- **M-01 a M-05**: limpieza menor -- funciones sin llamador en `pesaje_service.py`, `_resolver_usuario_id()` como función identidad, un edge case de doble conteo en `realizar_corte()`, config de tolerancia sin `try` al parsear, y los servicios abriendo su propia sesión en vez de reusar `get_db()`.
-- **Pendiente de hardware, no de código**: repetir la prueba de format con un peso bien alto (varios miles de kg, no solo hasta ~70kg) para confirmar que el ancho fijo del campo de peso se mantiene y no aparece separador de miles — todavía no se probó con un camión real, solo con una persona parada en la báscula.
+Queda pendiente, a propósito, sin resolver:
+
+- **M-05**: los servicios abren su propia sesión (`SessionLocal()` en cada función de `pesaje_service.py`/`auth_service.py`) en vez de reusar `get_db()` vía inyección de dependencias de FastAPI. Es el único hallazgo que se dejó afuera deliberadamente -- toca prácticamente todas las funciones de ambos archivos (~15+), y el riesgo de introducir una regresión en la sesión más larga de trabajo del proyecto hasta ahora no valía la pena contra un hallazgo de severidad Menor sin ningún bug activo asociado hoy (I-01, que sí necesitaba atomicidad real, ya se resolvió sin este refactor, con `with_for_update()` dentro de la sesión propia de `registrar_entrada()`). Antes de encararlo, planificarlo aparte con cuidado.
+- **Pendiente de hardware, no de código**: repetir la prueba de formato con un peso bien alto (varios miles de kg, no solo hasta ~70kg) para confirmar que el ancho fijo del campo de peso se mantiene y no aparece separador de miles — todavía no se probó con un camión real, solo con una persona parada en la báscula.
 - **Ícono/indicador permanente de qué display está activo** en la cabecera de la GUI (Toledo real vs. Simulador) -- parte de C-05 que quedó pendiente; hoy solo se sabe por la consola.
 
 ### Addendum — comparación contra el manual de usuario de Bigsoft (sistema anterior)
