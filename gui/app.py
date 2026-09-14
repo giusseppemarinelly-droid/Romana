@@ -8,12 +8,16 @@
 #   - El menú lateral
 #   - El header con información del usuario
 
+import os
+
 import customtkinter as ctk
 from config import EMPRESA, UI
 
 # Configurar apariencia de CustomTkinter
 ctk.set_appearance_mode(UI["tema"])       # "dark" o "light"
 ctk.set_default_color_theme("blue")       # Tema de color base
+
+_ICONO_VENTANA = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets", "icono.ico")
 
 
 class App(ctk.CTk):
@@ -48,6 +52,7 @@ class App(ctk.CTk):
 
         # --- Configuración de la ventana ---
         self.title(f"🚛 Romana — {EMPRESA['nombre']}")
+        self._set_icono_ventana()
         self.geometry("1280x780")
         self.minsize(1024, 680)
 
@@ -72,6 +77,22 @@ class App(ctk.CTk):
 
         # --- Mostrar pantalla de login primero ---
         self._mostrar_login()
+
+    def _set_icono_ventana(self):
+        """
+        Ícono de la ventana (barra de título, barra de tareas, Alt+Tab).
+        iconbitmap() con un .ico, no iconphoto() con un PNG -- se probó
+        iconphoto() primero y en Windows el ícono de la barra de tareas
+        no lo toma bien (queda un ícono genérico del sistema en vez del
+        nuestro, aunque la llamada no tira ningún error); iconbitmap()
+        con .ico es el camino que sí soporta bien Windows de forma
+        nativa. `default=` aplica el ícono a esta ventana y a cualquier
+        Toplevel que se abra después, no solo a la principal.
+        """
+        try:
+            self.iconbitmap(default=_ICONO_VENTANA)
+        except Exception:
+            pass  # sin ícono no es crítico, la app sigue funcionando igual
 
     def _centrar_ventana(self):
         """Centra la ventana en el monitor."""
