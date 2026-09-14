@@ -461,9 +461,15 @@ def registrar_entrada(
             "ticket": numero_ticket
         }
 
-    except Exception as e:
+    except Exception:
+        # Hallazgo I-10: ya no se atrapa genérico para devolver
+        # f"Error: {str(e)}" al cliente -- eso filtraba SQL/rutas del
+        # servidor a la pantalla y enmascaraba bugs de programación como
+        # si fueran errores de negocio. Lo que no se sabe manejar acá
+        # sube tal cual; backend/main.py lo loguea completo del lado del
+        # servidor y responde un 500 genérico sin detalles internos.
         db.rollback()
-        return {"exito": False, "mensaje": f"Error al registrar entrada: {str(e)}"}
+        raise
     finally:
         db.close()
 
@@ -576,9 +582,9 @@ def capturar_peso_salida(
             "diferencia_pct": diferencia_pct,
         }
 
-    except Exception as e:
-        db.rollback()
-        return {"exito": False, "mensaje": f"Error al capturar peso: {str(e)}"}
+    except Exception:
+        db.rollback()  # ver comentario en registrar_entrada() -- hallazgo I-10
+        raise
     finally:
         db.close()
 
@@ -618,9 +624,9 @@ def aprobar_pesada(pesada_id: int, usuario_id: Optional[int] = None) -> dict:
             "pesada": pesada
         }
 
-    except Exception as e:
-        db.rollback()
-        return {"exito": False, "mensaje": f"Error al aprobar: {str(e)}"}
+    except Exception:
+        db.rollback()  # ver comentario en registrar_entrada() -- hallazgo I-10
+        raise
     finally:
         db.close()
 
@@ -662,9 +668,9 @@ def rechazar_pesada(pesada_id: int, motivo: str, usuario_id: Optional[int] = Non
             "mensaje": f"Pesada {pesada.numero_ticket} rechazada. Romana debe volver a capturar.",
         }
 
-    except Exception as e:
-        db.rollback()
-        return {"exito": False, "mensaje": f"Error al rechazar: {str(e)}"}
+    except Exception:
+        db.rollback()  # ver comentario en registrar_entrada() -- hallazgo I-10
+        raise
     finally:
         db.close()
 
@@ -738,9 +744,9 @@ def completar_pesaje(
             "pesada": pesada
         }
 
-    except Exception as e:
-        db.rollback()
-        return {"exito": False, "mensaje": f"Error al completar: {str(e)}"}
+    except Exception:
+        db.rollback()  # ver comentario en registrar_entrada() -- hallazgo I-10
+        raise
     finally:
         db.close()
 
@@ -775,9 +781,9 @@ def anular_pesada(pesada_id: int, motivo: str, usuario_id: Optional[int] = None)
         db.commit()
 
         return {"exito": True, "mensaje": f"Pesada {pesada.numero_ticket} anulada"}
-    except Exception as e:
-        db.rollback()
-        return {"exito": False, "mensaje": f"Error: {str(e)}"}
+    except Exception:
+        db.rollback()  # ver comentario en registrar_entrada() -- hallazgo I-10
+        raise
     finally:
         db.close()
 
@@ -840,9 +846,9 @@ def realizar_corte(observaciones: str = "", usuario_id: Optional[int] = None) ->
             "fecha_fin": fecha_fin
         }
 
-    except Exception as e:
-        db.rollback()
-        return {"exito": False, "mensaje": f"Error al realizar corte: {str(e)}"}
+    except Exception:
+        db.rollback()  # ver comentario en registrar_entrada() -- hallazgo I-10
+        raise
     finally:
         db.close()
 

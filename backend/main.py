@@ -12,15 +12,19 @@
 # su propia lista de conexiones y los eventos no llegarían a todos los
 # clientes.
 
+import logging
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
 from database.engine import crear_tablas
 from backend.routers import auth, pesadas, reportes, admin
 from backend.routers.maestros import todos_los_routers as routers_maestros
 from backend.ws.router import router as ws_router
+
+logger = logging.getLogger("romana.backend")
 
 
 @asynccontextmanager
@@ -41,6 +45,31 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.exception_handler(Exception)
+async def _manejador_errores_no_previstos(request: Request, exc: Exception):
+    """
+    Hallazgo I-10: antes, cada función de services/pesaje_service.py
+    devolvía f"Error: {str(e)}" tal cual, y la GUI lo mostraba en un
+    messagebox sin filtrar -- eso exponía fragmentos de SQL y rutas del
+    servidor en pantalla, y enmascaraba bugs de programación reales como
+    si fueran errores de negocio esperados (un AttributeError y "el
+    vehículo ya tiene pesada activa" llegaban por el mismo canal,
+    indistinguibles). Los servicios ahora dejan subir lo que no saben
+    manejar en vez de atraparlo genérico -- este handler es donde
+    termina esa excepción: se loguea el traceback completo del lado del
+    servidor (para poder diagnosticarla de verdad) y se responde al
+    cliente un mensaje genérico, sin detalles internos. No interfiere
+    con HTTPException (401/400/404, etc.) -- Starlette las sigue
+    resolviendo con su propio handler más específico, este solo agarra
+    lo que nadie más atrapó.
+    """
+    logger.exception(f"Error no manejado en {request.method} {request.url.path}")
+    return JSONResponse(
+        status_code=500,
+        content={"detail": "Error interno del servidor. Contacte al administrador si el problema persiste."},
+    )
 
 
 app.include_router(auth.router, prefix="/api/v1")

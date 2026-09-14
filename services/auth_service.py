@@ -208,9 +208,12 @@ def crear_usuario(username: str, password: str, nombre_completo: str, nivel: int
         db.commit()
         return {"exito": True, "mensaje": f"Usuario '{username}' creado exitosamente"}
 
-    except Exception as e:
+    except Exception:
+        # Hallazgo I-10: ver comentario detallado en
+        # services/pesaje_service.py:registrar_entrada() -- ya no se
+        # atrapa genérico para devolver el mensaje interno al cliente.
         db.rollback()
-        return {"exito": False, "mensaje": f"Error: {str(e)}"}
+        raise
     finally:
         db.close()
 
@@ -228,9 +231,9 @@ def cambiar_password(usuario_id: int, nueva_password: str) -> dict:
         ).decode("utf-8")
         db.commit()
         return {"exito": True, "mensaje": "Contraseña actualizada exitosamente"}
-    except Exception as e:
-        db.rollback()
-        return {"exito": False, "mensaje": f"Error: {str(e)}"}
+    except Exception:
+        db.rollback()  # ver comentario en crear_usuario() -- hallazgo I-10
+        raise
     finally:
         db.close()
 
@@ -258,8 +261,8 @@ def activar_desactivar_usuario(usuario_id: int, activo: bool) -> dict:
         db.commit()
         estado = "activado" if activo else "desactivado"
         return {"exito": True, "mensaje": f"Usuario {estado} exitosamente"}
-    except Exception as e:
-        db.rollback()
-        return {"exito": False, "mensaje": f"Error: {str(e)}"}
+    except Exception:
+        db.rollback()  # ver comentario en crear_usuario() -- hallazgo I-10
+        raise
     finally:
         db.close()
