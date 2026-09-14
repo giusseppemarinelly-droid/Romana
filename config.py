@@ -86,49 +86,81 @@ TICKET = {
 }
 
 # -------------------------------------------------------
-# APARIENCIA DE LA INTERFAZ — Paleta Corporativa
+# APARIENCIA DE LA INTERFAZ — Sistema de diseño propio
 # -------------------------------------------------------
+# Ver docs/design-system.md para la spec completa (paleta con
+# justificación, tipografía, espaciado, componentes base) -- acá solo
+# los valores. El navy de marca es el color real del logo de Sura
+# (reports/templates/logo.png), muestreado a nivel de píxel, no a ojo.
+# Mismas claves que la paleta anterior (para no tener que tocar cada
+# pantalla que ya lee UI["color_accent"] etc.), valores nuevos.
 UI = {
     "tema":               "light",
 
-    # Colores de acento / acción principal — Azul corporativo
-    "color_accent":       "#1d4ed8",   # Azul real corporativo (blue-700)
-    "color_accent_hover": "#1e40af",   # Azul profundo al hacer hover (blue-800)
+    # ── Marca (navy real de Sura) ──────────────────
+    "color_brand":        "#1E2B50",   # Estructura: sidebar, headers, texto de máxima jerarquía
+    "color_brand_hover":  "#28365C",
+    "color_brand_tint":   "#EEF1F8",   # Filas activas/seleccionadas
+
+    # ── Acción (ámbar industrial -- no otro azul más) ──
+    "color_accent":       "#C1802A",
+    "color_accent_hover": "#A2681E",
+    "color_accent_tint":  "#FBF1E3",
 
     # Fondos
-    "color_bg":           "#f1f5f9",   # Fondo general ligeramente grisáceo (slate-100)
-    "color_card":         "#ffffff",   # Tarjetas blancas puras
+    "color_bg":           "#F4F1EC",   # Neutral cálido (no "slate" frío)
+    "color_card":         "#FFFFFF",
 
     # Textos
-    "color_text":         "#1e293b",   # Texto principal (slate-800)
-    "color_muted":        "#64748b",   # Texto secundario (slate-500)
+    "color_text":         "#211F1D",
+    "color_muted":        "#5C5750",
 
     # Bordes
-    "color_border":       "#e2e8f0",   # Borde sutil (slate-200)
+    "color_border":       "#D8D3CB",
 
     # Campos de entrada (entries, comboboxes) — fondo levemente
     # distinto de las tarjetas para que se noten como "editables"
-    "color_input_bg":      "#f8fafc",  # Slate-50
+    "color_input_bg":      "#F4F1EC",
 
     # Estados
-    "color_success":       "#059669",  # Verde para completados (emerald-600)
-    "color_success_hover": "#047857",
-    "color_warning":       "#b45309",  # Ámbar oscuro para pendientes (amber-700)
-    "color_danger":        "#dc2626",  # Rojo (red-600)
-    "color_danger_hover":  "#b91c1c",
+    "color_success":       "#1F7A4D",
+    "color_success_hover": "#175E3B",
+    "color_warning":       "#B5461F",
+    "color_danger":        "#B42318",
+    "color_danger_hover":  "#8F1B13",
+    "color_info":          "#2A5FA5",
+
+    # Estado de la báscula (semántica propia, no reutiliza los de
+    # arriba -- ver docs/design-system.md sección "Estado de la báscula")
+    "color_bascula_ok":        "#1F7A4D",
+    "color_bascula_leyendo":   "#C1802A",
+    "color_bascula_sin_senal": "#5C5750",
+    "color_bascula_error":     "#B42318",
 
     # ── SIDEBAR ────────────────────────────────────
-    # Azul navy oscuro original
-    "color_sidebar":       "#0f172a",   # Slate-900 oscuro original
-    "color_sidebar_text":  "#e2e8f0",   # Texto claro
-    "color_sidebar_hover": "#1e293b",   # Hover slate-800
-    "color_sidebar_active":"#1d4ed8",   # Ítem activo — azul corporativo
-    "color_sidebar_section":"#60a5fa",  # Etiquetas de sección — azul claro legible sobre oscuro
-    "color_sidebar_bottom": "#070e1c",  # Panel inferior ligeramente más oscuro
+    "color_sidebar":        "#1E2B50",   # Navy de marca
+    "color_sidebar_text":   "#E8E5DE",
+    "color_sidebar_hover":  "#28365C",
+    "color_sidebar_active": "#C1802A",   # Ítem activo -- color de acción, no un azul más
+    "color_sidebar_section":"#9FB0D6",   # Navy claro legible sobre navy oscuro
+    "color_sidebar_bottom": "#141D38",
 
-    # Tipografía
+    # Tipografía -- Segoe UI en todo (requisito del proyecto, ver CLAUDE.md)
     "fuente":             "Segoe UI",
-    "fuente_size":        12,
+    "fuente_size":        12,   # base/compat, queda por si algo viejo lo usa
+    "fuente_display":     44,   # el peso de báscula -- el elemento más grande de la app
+    "fuente_h1":          22,
+    "fuente_h2":          15,
+    "fuente_body":        13,
+    "fuente_label":       11,
+    "fuente_caption":     11,
+
+    # Espaciado -- escala de 4px, nada fuera de esta lista
+    "espaciado": {"xs": 4, "sm": 8, "md": 12, "lg": 16, "xl": 24, "xxl": 32, "xxxl": 48},
+
+    # Radios -- jerarquía, nunca "todo redondo"
+    "radio_control": 6,   # inputs, botones, badges
+    "radio_card":    10,  # tarjetas, paneles
 }
 
 # -------------------------------------------------------

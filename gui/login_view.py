@@ -5,6 +5,7 @@
 import customtkinter as ctk
 from client.api_client import api_client
 from config import EMPRESA, UI
+from gui.components.ui_kit import Card, titulo_h1, texto_ayuda, etiqueta_campo, boton_primario
 
 
 class LoginView(ctk.CTkFrame):
@@ -32,7 +33,7 @@ class LoginView(ctk.CTkFrame):
         """Panel izquierdo azul corporativo con branding."""
         panel = ctk.CTkFrame(
             self,
-            fg_color=UI["color_sidebar"],   # Oscuro original
+            fg_color=UI["color_brand"],
             corner_radius=0
         )
         panel.grid(row=0, column=0, sticky="nsew")
@@ -62,22 +63,22 @@ class LoginView(ctk.CTkFrame):
         # Línea decorativa
         ctk.CTkFrame(
             centro, height=3, width=70,
-            fg_color="#334155"           # Sutil sobre fondo oscuro
+            fg_color=UI["color_accent"]
         ).pack(pady=(10, 14))
 
         ctk.CTkLabel(
             centro,
             text="Sistema de Control\nde Pesaje de Camiones",
             font=ctk.CTkFont(family=UI["fuente"], size=15),
-            text_color="#94a3b8",        # Gris claro — legible sobre oscuro
+            text_color=UI["color_sidebar_text"],
             justify="center"
         ).pack()
 
         # Características del sistema (bullets)
         features_frame = ctk.CTkFrame(
             centro,
-            fg_color="#1e293b",          # Oscuro sobre oscuro — buen contraste
-            corner_radius=10
+            fg_color=UI["color_brand_hover"],
+            corner_radius=UI["radio_card"]
         )
         features_frame.pack(pady=(30, 0), padx=20, fill="x")
 
@@ -92,7 +93,7 @@ class LoginView(ctk.CTkFrame):
                 features_frame,
                 text=f,
                 font=ctk.CTkFont(family=UI["fuente"], size=12),
-                text_color="#94a3b8",    # Gris claro sobre oscuro
+                text_color=UI["color_sidebar_text"],
                 anchor="w"
             ).pack(anchor="w", padx=16, pady=3)
 
@@ -101,7 +102,7 @@ class LoginView(ctk.CTkFrame):
         # Pie de empresa (anclado al fondo del panel)
         empresa_frame = ctk.CTkFrame(
             panel,
-            fg_color="#070e1c",          # Más oscuro que el fondo para contraste
+            fg_color=UI["color_sidebar_bottom"],
             corner_radius=0
         )
         empresa_frame.grid(row=0, column=0, sticky="sew")
@@ -111,14 +112,14 @@ class LoginView(ctk.CTkFrame):
             empresa_frame,
             text=EMPRESA["nombre"],
             font=ctk.CTkFont(family=UI["fuente"], size=13, weight="bold"),
-            text_color="#e2e8f0"         # Blanco suave
+            text_color=UI["color_sidebar_text"]
         ).grid(row=0, column=0, padx=20, pady=(12, 2))
 
         ctk.CTkLabel(
             empresa_frame,
             text=f"RIF: {EMPRESA['rif']}  |  {EMPRESA['telefono']}",
             font=ctk.CTkFont(family=UI["fuente"], size=11),
-            text_color="#475569"         # Gris visible
+            text_color=UI["color_sidebar_section"]
         ).grid(row=1, column=0, padx=20, pady=(0, 12))
 
     # ----------------------------------------------------------
@@ -130,13 +131,7 @@ class LoginView(ctk.CTkFrame):
         panel.grid_columnconfigure(0, weight=1)
 
         # Card centrada verticalmente
-        card = ctk.CTkFrame(
-            panel,
-            fg_color=UI["color_card"],
-            border_color=UI["color_border"],
-            border_width=1,
-            corner_radius=16
-        )
+        card = Card(panel, corner_radius=16)
         card.grid(row=0, column=0, padx=50, pady=50, sticky="nsew")
         card.grid_columnconfigure(0, weight=1)
 
@@ -149,52 +144,34 @@ class LoginView(ctk.CTkFrame):
                      height=6, width=16).place(x=0, y=0)
 
         # Encabezado
-        ctk.CTkLabel(
-            card,
-            text="Acceso al Sistema",
-            font=ctk.CTkFont(family=UI["fuente"], size=26, weight="bold"),
-            text_color=UI["color_text"]
-        ).grid(row=1, column=0, padx=40, pady=(30, 4), sticky="w")
+        titulo_h1(card, "Acceso al Sistema").grid(
+            row=1, column=0, padx=40, pady=(30, 4), sticky="w")
 
-        ctk.CTkLabel(
-            card,
-            text="Ingrese sus credenciales para continuar",
-            font=ctk.CTkFont(family=UI["fuente"], size=13),
-            text_color=UI["color_muted"]
-        ).grid(row=2, column=0, padx=40, pady=(0, 24), sticky="w")
+        texto_ayuda(card, "Ingrese sus credenciales para continuar").grid(
+            row=2, column=0, padx=40, pady=(0, 24), sticky="w")
 
         # Separador
         ctk.CTkFrame(card, height=1, fg_color=UI["color_border"]).grid(
             row=3, column=0, sticky="ew", padx=30, pady=(0, 24))
 
         # --- Campo Usuario ---
-        ctk.CTkLabel(
-            card,
-            text="USUARIO",
-            font=ctk.CTkFont(family=UI["fuente"], size=10, weight="bold"),
-            text_color=UI["color_muted"]
-        ).grid(row=4, column=0, padx=40, sticky="w")
+        etiqueta_campo(card, "Usuario").grid(row=4, column=0, padx=40, sticky="w")
 
         self._entry_usuario = ctk.CTkEntry(
             card,
             placeholder_text="Nombre de usuario",
             height=46,
             font=ctk.CTkFont(family=UI["fuente"], size=14),
-            corner_radius=8,
+            corner_radius=UI["radio_control"],
             border_color=UI["color_border"],
             border_width=2,
-            fg_color="#f8fafc"
+            fg_color=UI["color_input_bg"]
         )
         self._entry_usuario.grid(row=5, column=0, padx=40, pady=(6, 18), sticky="ew")
         self._entry_usuario.focus()
 
         # --- Campo Contraseña ---
-        ctk.CTkLabel(
-            card,
-            text="CONTRASEÑA",
-            font=ctk.CTkFont(family=UI["fuente"], size=10, weight="bold"),
-            text_color=UI["color_muted"]
-        ).grid(row=6, column=0, padx=40, sticky="w")
+        etiqueta_campo(card, "Contraseña").grid(row=6, column=0, padx=40, sticky="w")
 
         self._entry_password = ctk.CTkEntry(
             card,
@@ -202,10 +179,10 @@ class LoginView(ctk.CTkFrame):
             show="●",
             height=46,
             font=ctk.CTkFont(family=UI["fuente"], size=14),
-            corner_radius=8,
+            corner_radius=UI["radio_control"],
             border_color=UI["color_border"],
             border_width=2,
-            fg_color="#f8fafc"
+            fg_color=UI["color_input_bg"]
         )
         self._entry_password.grid(row=7, column=0, padx=40, pady=(6, 8), sticky="ew")
 
@@ -219,16 +196,7 @@ class LoginView(ctk.CTkFrame):
         self._lbl_error.grid(row=8, column=0, padx=40, pady=(0, 8))
 
         # Botón principal
-        btn = ctk.CTkButton(
-            card,
-            text="INGRESAR AL SISTEMA",
-            command=self._intentar_login,
-            height=50,
-            font=ctk.CTkFont(family=UI["fuente"], size=14, weight="bold"),
-            corner_radius=8,
-            fg_color=UI["color_accent"],
-            hover_color=UI["color_accent_hover"]
-        )
+        btn = boton_primario(card, "INGRESAR AL SISTEMA", command=self._intentar_login, height=50)
         btn.grid(row=9, column=0, padx=40, pady=(10, 28), sticky="ew")
 
         # Versión

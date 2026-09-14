@@ -7,12 +7,27 @@ from client.api_client import api_client
 from datetime import datetime
 from config import UI
 from gui.async_utils import cargar_en_hilo
+from gui.components.ui_kit import Card, titulo_h1, titulo_h2, texto_ayuda, boton_primario, boton_secundario
 
 
 def _hora(iso_str):
     if not iso_str:
         return "-"
     return datetime.fromisoformat(iso_str).strftime("%H:%M:%S")
+
+
+# %A/%B de strftime dependen del locale del sistema operativo -- en una
+# estación sin el locale es_* instalado (default en Windows) salen en
+# inglés ("Monday, 14 de September de 2026", mezclado con las palabras
+# fijas en español del formato). Nombres fijos en vez de locale.setlocale(),
+# mismo criterio que gui/components/header.py.
+_DIAS_SEMANA = ["lunes", "martes", "miércoles", "jueves", "viernes", "sábado", "domingo"]
+_MESES = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio",
+          "agosto", "septiembre", "octubre", "noviembre", "diciembre"]
+
+
+def _fecha_larga_es(fecha: datetime) -> str:
+    return f"{_DIAS_SEMANA[fecha.weekday()]}, {fecha.day} de {_MESES[fecha.month - 1]} de {fecha.year}"
 
 
 class DashboardView(ctk.CTkFrame):
@@ -44,18 +59,9 @@ class DashboardView(ctk.CTkFrame):
         saludo = "Buenos días" if hora < 12 else "Buenas tardes" if hora < 18 else "Buenas noches"
         nombre = usuario["nombre_completo"] if usuario else "Usuario"
 
-        ctk.CTkLabel(
-            saludo_frame,
-            text=f"  {saludo}, {nombre}",
-            font=ctk.CTkFont(family=UI["fuente"], size=24, weight="bold"),
-            text_color=UI["color_text"]
-        ).pack(anchor="w")
-
-        ctk.CTkLabel(
-            saludo_frame,
-            text=datetime.now().strftime("  %A, %d de %B de %Y"),
-            font=ctk.CTkFont(family=UI["fuente"], size=13),
-            text_color=UI["color_muted"]
+        titulo_h1(saludo_frame, f"{saludo}, {nombre}").pack(anchor="w")
+        texto_ayuda(
+            saludo_frame, _fecha_larga_es(datetime.now())
         ).pack(anchor="w", pady=(2, 0))
 
         # ---- Tarjetas de métricas ----
@@ -69,18 +75,12 @@ class DashboardView(ctk.CTkFrame):
             ("🚛", "Camiones en Planta", UI["color_warning"]),
             ("✅", "Pesadas Hoy",         UI["color_accent"]),
             ("⚖",  "Neto Hoy (KG)",      UI["color_success"]),
-            ("📋", "Total Completadas",   UI["color_accent_hover"]),
+            ("📋", "Total Completadas",   UI["color_brand"]),
         ]
 
         self._lbls_metricas = []
         for i, (icono, titulo, color) in enumerate(metricas_def):
-            card = ctk.CTkFrame(
-                metrics_frame,
-                fg_color=UI["color_card"],
-                border_color=UI["color_border"],
-                border_width=1,
-                corner_radius=12
-            )
+            card = Card(metrics_frame)
             card.grid(row=0, column=i, padx=8, pady=0, sticky="ew")
             metrics_frame.grid_columnconfigure(i, weight=1)
 
@@ -114,10 +114,7 @@ class DashboardView(ctk.CTkFrame):
         self._construir_accesos_rapidos(self._lower_frame)
 
         # --- Lista de pendientes --- placeholder mientras carga
-        self._lista_placeholder = ctk.CTkFrame(
-            self._lower_frame, fg_color=UI["color_card"],
-            border_color=UI["color_border"], border_width=1, corner_radius=12
-        )
+        self._lista_placeholder = Card(self._lower_frame)
         self._lista_placeholder.grid(row=0, column=1, sticky="nsew", pady=10)
         ctk.CTkLabel(
             self._lista_placeholder, text="Cargando…",
@@ -164,20 +161,10 @@ class DashboardView(ctk.CTkFrame):
 
     def _construir_accesos_rapidos(self, parent):
         """Botones grandes de acceso rápido."""
-        frame = ctk.CTkFrame(
-            parent,
-            fg_color=UI["color_card"],
-            border_color=UI["color_border"],
-            border_width=1,
-            corner_radius=12
-        )
+        frame = Card(parent)
         frame.grid(row=0, column=0, sticky="nsew", padx=(0, 10), pady=10)
 
-        ctk.CTkLabel(
-            frame, text="⚡ Accesos Rápidos",
-            font=ctk.CTkFont(family=UI["fuente"], size=14, weight="bold"),
-            text_color=UI["color_text"]
-        ).pack(anchor="w", padx=18, pady=(15, 10))
+        titulo_h2(frame, "⚡ Accesos Rápidos").pack(anchor="w", padx=18, pady=(15, 10))
 
         # Definición de accesos: (texto, destino, es_primario, permiso)
         accesos = [
@@ -191,75 +178,32 @@ class DashboardView(ctk.CTkFrame):
         for texto, destino, primario, permiso in accesos:
             if not api_client.tiene_permiso(permiso):
                 continue
-            if primario:
-                # Botón principal: azul sólido, sin borde
-                btn = ctk.CTkButton(
-                    frame,
-                    text=texto,
-                    command=lambda d=destino: self.callback_navegar(d),
-                    height=44,
-                    font=ctk.CTkFont(family=UI["fuente"], size=13, weight="bold"),
-                    fg_color=UI["color_accent"],
-                    hover_color=UI["color_accent_hover"],
-                    text_color="#ffffff",
-                    corner_radius=8,
-                    anchor="w"
-                )
-            else:
-                # Botón secundario: fondo blanco con borde azul
-                btn = ctk.CTkButton(
-                    frame,
-                    text=texto,
-                    command=lambda d=destino: self.callback_navegar(d),
-                    height=44,
-                    font=ctk.CTkFont(family=UI["fuente"], size=13),
-                    fg_color=UI["color_card"],
-                    hover_color=UI["color_bg"],
-                    text_color=UI["color_text"],
-                    border_color=UI["color_accent"],
-                    border_width=1,
-                    corner_radius=8,
-                    anchor="w"
-                )
+            constructor = boton_primario if primario else boton_secundario
+            btn = constructor(
+                frame, texto, command=lambda d=destino: self.callback_navegar(d),
+                height=44, anchor="w",
+            )
             btn.pack(fill="x", padx=15, pady=3)
 
         ctk.CTkFrame(frame, fg_color="transparent").pack(fill="both", expand=True)
 
     def _construir_lista_pendientes(self, parent, pendientes):
         """Lista de camiones actualmente en planta (pesadas pendientes)."""
-        frame = ctk.CTkFrame(
-            parent,
-            fg_color=UI["color_card"],
-            border_color=UI["color_border"],
-            border_width=1,
-            corner_radius=12
-        )
+        frame = Card(parent)
         frame.grid(row=0, column=1, sticky="nsew", pady=10)
 
         # Header de la lista
         header = ctk.CTkFrame(frame, fg_color="transparent")
         header.pack(fill="x", padx=18, pady=(15, 5))
 
-        ctk.CTkLabel(
-            header,
-            text=f"🚛 Camiones en Planta ({len(pendientes)})",
-            font=ctk.CTkFont(family=UI["fuente"], size=14, weight="bold"),
-            text_color=UI["color_text"]
-        ).pack(side="left")
+        titulo_h2(header, f"🚛 Camiones en Planta ({len(pendientes)})").pack(side="left")
 
-        ctk.CTkButton(
-            header,
-            text="↻ Actualizar",
-            width=90,
-            height=28,
-            font=ctk.CTkFont(family=UI["fuente"], size=11),
-            command=self._refrescar,
-            fg_color=UI["color_accent"],
-            hover_color=UI["color_accent_hover"]
+        boton_secundario(
+            header, "↻ Actualizar", width=90, height=28, command=self._refrescar,
         ).pack(side="right")
 
         # Columnas
-        cols_frame = ctk.CTkFrame(frame, fg_color=UI["color_bg"], corner_radius=6)
+        cols_frame = ctk.CTkFrame(frame, fg_color=UI["color_bg"], corner_radius=UI["radio_control"])
         cols_frame.pack(fill="x", padx=15, pady=(5, 0))
 
         for col, texto, ancho in [
@@ -292,7 +236,7 @@ class DashboardView(ctk.CTkFrame):
         else:
             for i, p in enumerate(pendientes):
                 bg = UI["color_card"] if i % 2 == 0 else UI["color_bg"]
-                fila = ctk.CTkFrame(scroll, fg_color=bg, corner_radius=6)
+                fila = ctk.CTkFrame(scroll, fg_color=bg, corner_radius=UI["radio_control"])
                 fila.pack(fill="x", pady=1)
 
                 datos = [

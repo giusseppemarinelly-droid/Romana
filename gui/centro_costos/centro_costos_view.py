@@ -12,6 +12,7 @@ from config import UI
 from client.api_client import api_client, ApiError
 from client.ws_client import WsClient
 from gui.async_utils import cargar_en_hilo
+from gui.components.ui_kit import Card, titulo_h2, boton_primario, boton_secundario, boton_peligro
 
 
 def _fecha_hora(iso_str):
@@ -82,9 +83,7 @@ class CentroCostosView(ctk.CTkFrame):
     # ----------------------------------------------------------
     def _construir_lista(self):
         """Panel izquierdo — cola de aprobaciones."""
-        frame = ctk.CTkFrame(self, fg_color=UI["color_card"],
-                              border_color=UI["color_border"],
-                              border_width=1, corner_radius=12)
+        frame = Card(self)
         frame.grid(row=0, column=0, sticky="nsew",
                    padx=(20, 8), pady=20)
         frame.grid_rowconfigure(2, weight=1)
@@ -96,12 +95,8 @@ class CentroCostosView(ctk.CTkFrame):
                          padx=16, pady=(16, 4))
         header_row.grid_columnconfigure(0, weight=1)
 
-        ctk.CTkLabel(
-            header_row,
-            text="📋  COLA DE APROBACIONES — CENTRO DE COSTOS",
-            font=ctk.CTkFont(family=UI["fuente"], size=14, weight="bold"),
-            text_color="#f59e0b"
-        ).grid(row=0, column=0, sticky="w")
+        titulo_h2(header_row, "📋  Cola de Aprobaciones — Centro de Costos").grid(
+            row=0, column=0, sticky="w")
 
         self._lbl_count = ctk.CTkLabel(
             header_row, text="0 pendientes",
@@ -122,20 +117,20 @@ class CentroCostosView(ctk.CTkFrame):
         style = ttk.Style()
         style.theme_use("default")
         style.configure("CC.Treeview",
-            background="#ffffff",
-            foreground="#1e293b",
-            fieldbackground="#f8fafc",
+            background=UI["color_card"],
+            foreground=UI["color_text"],
+            fieldbackground=UI["color_input_bg"],
             rowheight=34,
             font=("Segoe UI", 11)
         )
         style.configure("CC.Treeview.Heading",
-            background="#fffbeb",
-            foreground="#92400e",
+            background=UI["color_bg"],
+            foreground=UI["color_warning"],
             font=("Segoe UI", 10, "bold")
         )
         style.map("CC.Treeview",
-            background=[("selected", "#fef3c7")],
-            foreground=[("selected", "#78350f")]
+            background=[("selected", UI["color_accent_tint"])],
+            foreground=[("selected", UI["color_warning"])]
         )
 
         cols = ("ticket", "placa", "tipo", "producto",
@@ -163,23 +158,15 @@ class CentroCostosView(ctk.CTkFrame):
         scroll.grid(row=2, column=1, sticky="ns")
         self._tree.bind("<<TreeviewSelect>>", self._on_seleccion)
 
-        ctk.CTkButton(
-            frame, text="↻  Actualizar",
-            command=self._cargar_cola,
+        boton_secundario(
+            frame, "↻  Actualizar", command=self._cargar_cola,
             height=30, width=120,
-            fg_color="transparent",
-            border_color=UI["color_border"], border_width=1,
-            text_color=UI["color_text"],
-            hover_color=UI["color_bg"],
-            font=ctk.CTkFont(family=UI["fuente"], size=11)
         ).grid(row=3, column=0, padx=10, pady=(6, 12), sticky="w")
 
     # ----------------------------------------------------------
     def _construir_panel_detalle(self):
         """Panel derecho — detalle + botones de decisión."""
-        self._panel = ctk.CTkFrame(self, fg_color=UI["color_card"],
-                                    border_color=UI["color_border"],
-                                    border_width=1, corner_radius=12)
+        self._panel = Card(self)
         self._panel.grid(row=0, column=1, sticky="nsew",
                           padx=(8, 20), pady=20)
         self._panel.grid_columnconfigure(0, weight=1)
@@ -203,9 +190,7 @@ class CentroCostosView(ctk.CTkFrame):
         dentro de tolerancia. CC no decide nada acá, pero la info le
         tiene que llegar igual.
         """
-        frame = ctk.CTkFrame(self, fg_color=UI["color_card"],
-                              border_color=UI["color_border"],
-                              border_width=1, corner_radius=12)
+        frame = Card(self)
         frame.grid(row=1, column=0, columnspan=2, sticky="nsew",
                    padx=20, pady=(8, 20))
         frame.grid_rowconfigure(1, weight=1)
@@ -232,15 +217,15 @@ class CentroCostosView(ctk.CTkFrame):
 
         style = ttk.Style()
         style.configure("CCAuto.Treeview",
-            background="#ffffff",
-            foreground="#1e293b",
-            fieldbackground="#f0fdf4",
+            background=UI["color_card"],
+            foreground=UI["color_text"],
+            fieldbackground=UI["color_input_bg"],
             rowheight=28,
             font=("Segoe UI", 10)
         )
         style.configure("CCAuto.Treeview.Heading",
-            background="#f0fdf4",
-            foreground="#166534",
+            background=UI["color_bg"],
+            foreground=UI["color_success"],
             font=("Segoe UI", 9, "bold")
         )
 
@@ -297,7 +282,7 @@ class CentroCostosView(ctk.CTkFrame):
 
         self._lbl_count.configure(
             text=f"{len(pesadas)} pendiente(s)",
-            text_color="#f59e0b" if pesadas else UI["color_muted"]
+            text_color=UI["color_warning"] if pesadas else UI["color_muted"]
         )
         self._pesada_seleccionada = None
         self._limpiar_detalle()
@@ -366,7 +351,7 @@ class CentroCostosView(ctk.CTkFrame):
             self._detalle_frame,
             text=f"Ticket  {p['numero_ticket']}",
             font=ctk.CTkFont(family=UI["fuente"], size=16, weight="bold"),
-            text_color="#f59e0b"
+            text_color=UI["color_warning"]
         ).grid(row=row, column=0, sticky="w", pady=(0, 4)); row += 1
 
         ctk.CTkLabel(
@@ -419,7 +404,7 @@ class CentroCostosView(ctk.CTkFrame):
         self._peso_grande(pesos_frame, 0, "ENTRADA",
             f"{float(p['peso_bruto'] or 0):,.0f} KG", UI["color_muted"])
         self._peso_grande(pesos_frame, 1, "SALIDA",
-            f"{float(p['peso_tara'] or 0):,.0f} KG", "#f59e0b")
+            f"{float(p['peso_tara'] or 0):,.0f} KG", UI["color_warning"])
         self._peso_grande(pesos_frame, 2, "NETO",
             f"{float(p['peso_neto'] or 0):,.0f} KG", UI["color_success"])
 
@@ -429,29 +414,13 @@ class CentroCostosView(ctk.CTkFrame):
             row=row, column=0, sticky="ew", pady=10); row += 1
 
         # Botón APROBAR
-        ctk.CTkButton(
-            self._detalle_frame,
-            text="✅  APROBAR",
-            command=self._aprobar,
-            height=50,
-            font=ctk.CTkFont(family=UI["fuente"], size=14, weight="bold"),
-            fg_color=UI["color_success"],
-            hover_color="#059669",
-            corner_radius=8
+        boton_primario(
+            self._detalle_frame, "✅  APROBAR", command=self._aprobar, height=50,
         ).grid(row=row, column=0, sticky="ew", pady=(0, 6)); row += 1
 
         # Botón RECHAZAR
-        ctk.CTkButton(
-            self._detalle_frame,
-            text="❌  RECHAZAR",
-            command=self._rechazar,
-            height=40,
-            font=ctk.CTkFont(family=UI["fuente"], size=13),
-            fg_color="transparent",
-            border_color="#fca5a5", border_width=2,
-            text_color="#dc2626",
-            hover_color="#fef2f2",
-            corner_radius=8
+        boton_peligro(
+            self._detalle_frame, "❌  RECHAZAR", command=self._rechazar, height=40,
         ).grid(row=row, column=0, sticky="ew"); row += 1
 
     # ----------------------------------------------------------

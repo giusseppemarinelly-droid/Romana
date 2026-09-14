@@ -8,6 +8,7 @@ from datetime import datetime
 from client.api_client import api_client, ApiError
 from config import UI
 from gui.async_utils import cargar_en_hilo
+from gui.components.ui_kit import Card, titulo_h1, titulo_h2, texto_ayuda, boton_primario
 
 
 def _fecha_hora(iso_str):
@@ -29,29 +30,17 @@ class CorteView(ctk.CTkFrame):
         self.grid_rowconfigure(0, weight=1)
 
         # ---- Panel izquierdo: resumen y acción ----
-        left = ctk.CTkFrame(
-            self,
-            fg_color=UI["color_card"],
-            border_color=UI["color_border"],
-            border_width=1,
-            corner_radius=12
-        )
+        left = Card(self)
         left.grid(row=0, column=0, sticky="nsew", padx=(20, 10), pady=20)
 
-        ctk.CTkLabel(
-            left, text="✂  CORTE DE PESADAS",
-            font=ctk.CTkFont(family=UI["fuente"], size=16, weight="bold"),
-            text_color=UI["color_warning"]
-        ).pack(padx=20, pady=(20, 5), anchor="w")
+        titulo_h1(left, "✂  Corte de Pesadas").pack(padx=20, pady=(20, 5), anchor="w")
 
-        ctk.CTkLabel(
+        texto_ayuda(
             left,
-            text="Un corte cierra el período actual y genera\n"
-                 "un resumen de todas las pesadas completadas\n"
-                 "desde el último corte.",
-            font=ctk.CTkFont(family=UI["fuente"], size=12),
-            text_color=UI["color_muted"],
-            justify="left"
+            "Un corte cierra el período actual y genera\n"
+            "un resumen de todas las pesadas completadas\n"
+            "desde el último corte.",
+            justify="left",
         ).pack(padx=20, pady=(5, 15), anchor="w")
 
         ctk.CTkFrame(left, height=1, fg_color=UI["color_border"]).pack(
@@ -83,33 +72,17 @@ class CorteView(ctk.CTkFrame):
         self._txt_obs.pack(fill="x", padx=20, pady=(0, 15))
 
         # Botón de corte
-        ctk.CTkButton(
-            left,
-            text="✂  REALIZAR CORTE AHORA",
-            command=self._hacer_corte,
-            height=52,
-            font=ctk.CTkFont(family=UI["fuente"], size=15, weight="bold"),
-            fg_color=UI["color_warning"],
-            hover_color=UI["color_accent_hover"],
-            corner_radius=10
+        boton_primario(
+            left, "✂  REALIZAR CORTE AHORA", command=self._hacer_corte, height=52,
         ).pack(fill="x", padx=20, pady=(0, 20))
 
         # ---- Panel derecho: historial de cortes ----
-        right = ctk.CTkFrame(
-            self,
-            fg_color=UI["color_card"],
-            border_color=UI["color_border"],
-            border_width=1,
-            corner_radius=12
-        )
+        right = Card(self)
         right.grid(row=0, column=1, sticky="nsew", padx=(10, 20), pady=20)
         right.grid_rowconfigure(1, weight=1)
 
-        ctk.CTkLabel(
-            right, text="📜 Historial de Cortes",
-            font=ctk.CTkFont(family=UI["fuente"], size=14, weight="bold"),
-            text_color=UI["color_text"]
-        ).grid(row=0, column=0, padx=18, pady=(15, 5), sticky="w")
+        titulo_h2(right, "📜 Historial de Cortes").grid(
+            row=0, column=0, padx=18, pady=(15, 5), sticky="w")
 
         self._scroll_cortes = ctk.CTkScrollableFrame(
             right, fg_color="transparent")

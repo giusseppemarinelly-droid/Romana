@@ -7,6 +7,13 @@ from datetime import datetime
 from client.api_client import api_client
 from config import UI
 
+# Nombres en español a mano, no locale.setlocale(): la estación puede no
+# tener el locale es_* instalado (típico en Windows sin idioma regional
+# configurado) y setlocale falla ahí de forma silenciosa o con excepción
+# según la versión -- una lista fija es 100% predecible.
+_DIAS_SEMANA = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo"]
+_MESES = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"]
+
 
 class Header(ctk.CTkFrame):
     """
@@ -26,7 +33,8 @@ class Header(ctk.CTkFrame):
         self.grid_propagate(False)
         self.callback_logout = callback_logout
         self._titulo_label = None
-        self._reloj_label = None
+        self._lbl_hora = None
+        self._lbl_fecha = None
 
         self._construir()
         self._actualizar_reloj()
@@ -52,14 +60,27 @@ class Header(ctk.CTkFrame):
         )
         self._titulo_label.grid(row=0, column=1, padx=(10, 20), pady=15, sticky="w")
 
-        # Reloj
-        self._reloj_label = ctk.CTkLabel(
-            self,
-            text="",
-            font=ctk.CTkFont(family=UI["fuente"], size=12),
-            text_color=UI["color_muted"]
+        # Reloj -- chip con hora grande (mono-espaciada para que no
+        # "salte" de ancho segundo a segundo) y fecha en español chica
+        # debajo, en vez del texto plano de antes.
+        reloj_chip = ctk.CTkFrame(
+            self, fg_color=UI["color_bg"], corner_radius=UI["radio_control"]
         )
-        self._reloj_label.grid(row=0, column=2, padx=(0, 16), pady=15)
+        reloj_chip.grid(row=0, column=2, padx=(0, 16), pady=10)
+
+        self._lbl_hora = ctk.CTkLabel(
+            reloj_chip, text="--:--:--",
+            font=ctk.CTkFont(family="Consolas", size=16, weight="bold"),
+            text_color=UI["color_brand"],
+        )
+        self._lbl_hora.pack(padx=16, pady=(6, 0))
+
+        self._lbl_fecha = ctk.CTkLabel(
+            reloj_chip, text="",
+            font=ctk.CTkFont(family=UI["fuente"], size=10),
+            text_color=UI["color_muted"],
+        )
+        self._lbl_fecha.pack(padx=16, pady=(0, 6))
 
         # Separador vertical
         ctk.CTkFrame(
@@ -116,7 +137,10 @@ class Header(ctk.CTkFrame):
 
     def _actualizar_reloj(self):
         """Actualiza el reloj cada segundo."""
-        if self._reloj_label:
-            ahora = datetime.now().strftime("%d/%m/%Y   %H:%M:%S")
-            self._reloj_label.configure(text=f"  {ahora}")
+        if self._lbl_hora:
+            ahora = datetime.now()
+            self._lbl_hora.configure(text=ahora.strftime("%I:%M:%S %p"))
+            dia = _DIAS_SEMANA[ahora.weekday()]
+            mes = _MESES[ahora.month - 1]
+            self._lbl_fecha.configure(text=f"{dia} {ahora.day} {mes} {ahora.year}")
             self.after(1000, self._actualizar_reloj)

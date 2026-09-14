@@ -11,6 +11,7 @@ from config import UI, REPORTS_DIR
 from client.api_client import api_client, ApiError
 from hardware.display_manager import leer_peso_actual, es_peso_estable
 from gui.async_utils import cargar_en_hilo
+from gui.components.ui_kit import Card, boton_primario, boton_secundario, titulo_h2, etiqueta_campo
 import os
 
 
@@ -66,9 +67,7 @@ class CompletarPesajeView(ctk.CTkFrame):
 
     # ----------------------------------------------------------
     def _construir_lista(self):
-        frame = ctk.CTkFrame(self, fg_color=UI["color_card"],
-                              border_color=UI["color_border"],
-                              border_width=1, corner_radius=12)
+        frame = Card(self)
         frame.grid(row=0, column=0, sticky="nsew",
                    padx=(20, 8), pady=20)
         frame.grid_rowconfigure(5, weight=1)
@@ -77,24 +76,24 @@ class CompletarPesajeView(ctk.CTkFrame):
         style = ttk.Style()
         style.theme_use("default")
         style.configure("Completar.Treeview",
-            background="#ffffff",
-            foreground="#1e293b",
-            fieldbackground="#f8fafc",
+            background=UI["color_card"],
+            foreground=UI["color_text"],
+            fieldbackground=UI["color_input_bg"],
             rowheight=32,
             font=("Segoe UI", 11)
         )
         style.configure("Completar.Treeview.Heading",
-            background="#f0fdf4",
-            foreground="#166534",
+            background=UI["color_bg"],
+            foreground=UI["color_success"],
             font=("Segoe UI", 10, "bold")
         )
         style.map("Completar.Treeview",
-            background=[("selected", "#dcfce7")],
-            foreground=[("selected", "#14532d")]
+            background=[("selected", UI["color_brand_tint"])],
+            foreground=[("selected", UI["color_brand"])]
         )
         style.configure("PendCC.Treeview.Heading",
-            background="#fffbeb",
-            foreground="#92400e",
+            background=UI["color_bg"],
+            foreground=UI["color_warning"],
             font=("Segoe UI", 10, "bold")
         )
 
@@ -112,7 +111,7 @@ class CompletarPesajeView(ctk.CTkFrame):
             header_pend,
             text="⏳  ESPERANDO APROBACIÓN DE CENTRO DE COSTOS",
             font=ctk.CTkFont(family=UI["fuente"], size=12, weight="bold"),
-            text_color="#b45309"
+            text_color=UI["color_warning"]
         ).grid(row=0, column=0, sticky="w")
 
         self._lbl_count_pend_cc = ctk.CTkLabel(
@@ -148,12 +147,8 @@ class CompletarPesajeView(ctk.CTkFrame):
                      padx=16, pady=(0, 4))
         header.grid_columnconfigure(0, weight=1)
 
-        ctk.CTkLabel(
-            header,
-            text="✅  APROBADAS POR CC — PENDIENTES DE COMPLETAR",
-            font=ctk.CTkFont(family=UI["fuente"], size=13, weight="bold"),
-            text_color=UI["color_success"]
-        ).grid(row=0, column=0, sticky="w")
+        titulo_h2(header, "✅  Aprobadas por CC — pendientes de completar").grid(
+            row=0, column=0, sticky="w")
 
         self._lbl_count = ctk.CTkLabel(
             header, text="0 pendientes",
@@ -192,23 +187,15 @@ class CompletarPesajeView(ctk.CTkFrame):
         scroll.grid(row=5, column=1, sticky="ns")
         self._tree.bind("<<TreeviewSelect>>", self._on_seleccion)
 
-        ctk.CTkButton(
-            frame, text="↻  Actualizar",
-            command=self._cargar_lista,
+        boton_secundario(
+            frame, "↻  Actualizar", command=self._cargar_lista,
             height=30, width=120,
-            fg_color="transparent",
-            border_color=UI["color_border"], border_width=1,
-            text_color=UI["color_text"],
-            hover_color=UI["color_bg"],
-            font=ctk.CTkFont(family=UI["fuente"], size=11)
         ).grid(row=6, column=0, padx=10, pady=(6, 12), sticky="w")
 
     # ----------------------------------------------------------
     def _construir_formulario(self):
         """Panel derecho — datos finales a completar."""
-        self._panel = ctk.CTkFrame(self, fg_color=UI["color_card"],
-                                    border_color=UI["color_border"],
-                                    border_width=1, corner_radius=12)
+        self._panel = Card(self)
         self._panel.grid(row=0, column=1, sticky="nsew",
                           padx=(8, 20), pady=20)
         self._panel.grid_columnconfigure(0, weight=1)
@@ -334,7 +321,7 @@ class CompletarPesajeView(ctk.CTkFrame):
         self._dato_rapido(info_frame, 0, "ENTRADA",
             f"{float(p['peso_bruto'] or 0):,.0f} KG", UI["color_muted"])
         self._dato_rapido(info_frame, 1, "SALIDA",
-            f"{float(p['peso_tara'] or 0):,.0f} KG", "#f59e0b")
+            f"{float(p['peso_tara'] or 0):,.0f} KG", UI["color_warning"])
         self._dato_rapido(info_frame, 2, "NETO",
             f"{float(p['peso_neto'] or 0):,.0f} KG", UI["color_success"])
 
@@ -346,10 +333,8 @@ class CompletarPesajeView(ctk.CTkFrame):
         # Peso final -- 3er pesaje, el chofer sube a la báscula por
         # última vez antes de autorizar la salida. Se registra sin
         # bloqueo de tolerancia contra el pre-pesaje (solo informativo).
-        ctk.CTkLabel(
-            self._form_frame, text="⚖  PESO FINAL — antes de autorizar la salida",
-            font=ctk.CTkFont(family=UI["fuente"], size=10, weight="bold"),
-            text_color=UI["color_muted"]
+        etiqueta_campo(
+            self._form_frame, "⚖  Peso final — antes de autorizar la salida"
         ).grid(row=row, column=0, sticky="w", pady=(0, 4)); row += 1
 
         self._lbl_peso_final = ctk.CTkLabel(
@@ -389,13 +374,9 @@ class CompletarPesajeView(ctk.CTkFrame):
         # pantalla es el correcto (igual criterio que "CAPTURAR PESO" en
         # Salida). "GUARDAR Y COMPLETAR" usa el valor ya capturado acá,
         # no vuelve a leer la báscula por su cuenta.
-        ctk.CTkButton(
-            self._form_frame, text="⚖  CAPTURAR PESO FINAL",
-            command=self._capturar_peso_final,
-            height=42, corner_radius=8,
-            fg_color=UI["color_success"],
-            hover_color="#059669",
-            font=ctk.CTkFont(family=UI["fuente"], size=13, weight="bold")
+        boton_primario(
+            self._form_frame, "⚖  CAPTURAR PESO FINAL",
+            command=self._capturar_peso_final, height=42,
         ).grid(row=row, column=0, sticky="ew", pady=(0, 4)); row += 1
 
         self._lbl_peso_final_capturado = ctk.CTkLabel(
@@ -410,12 +391,8 @@ class CompletarPesajeView(ctk.CTkFrame):
                       fg_color=UI["color_border"]).grid(
             row=row, column=0, sticky="ew", pady=10); row += 1
 
-        ctk.CTkLabel(
-            self._form_frame,
-            text="COMPLETE LOS DATOS FINALES",
-            font=ctk.CTkFont(family=UI["fuente"], size=10, weight="bold"),
-            text_color=UI["color_muted"]
-        ).grid(row=row, column=0, sticky="w", pady=(0, 8)); row += 1
+        etiqueta_campo(self._form_frame, "Complete los datos finales").grid(
+            row=row, column=0, sticky="w", pady=(0, 8)); row += 1
 
         # Campos finales
         self._entry_orden_compra = self._campo(
@@ -446,15 +423,9 @@ class CompletarPesajeView(ctk.CTkFrame):
         self._txt_obs.grid(row=row, column=0, sticky="ew", pady=(0, 10)); row += 1
 
         # Botón completar
-        ctk.CTkButton(
-            self._form_frame,
-            text="💾  GUARDAR Y COMPLETAR",
-            command=self._completar,
-            height=50,
-            font=ctk.CTkFont(family=UI["fuente"], size=14, weight="bold"),
-            fg_color=UI["color_accent"],
-            hover_color=UI["color_accent_hover"],
-            corner_radius=8
+        boton_primario(
+            self._form_frame, "💾  GUARDAR Y COMPLETAR",
+            command=self._completar, height=50,
         ).grid(row=row, column=0, sticky="ew"); row += 1
 
         # Reinicia el polling de peso final -- si ya había uno corriendo
@@ -503,7 +474,7 @@ class CompletarPesajeView(ctk.CTkFrame):
                 dif = peso - bruto_prepesaje
                 self._lbl_dif_peso_final.configure(
                     text=f"Diferencia vs. pre-pesaje ({bruto_prepesaje:,.0f} KG): {dif:+,.0f} KG",
-                    text_color=UI["color_muted"] if abs(dif) < 1 else "#b45309"
+                    text_color=UI["color_muted"] if abs(dif) < 1 else UI["color_warning"]
                 )
         except Exception:
             pass

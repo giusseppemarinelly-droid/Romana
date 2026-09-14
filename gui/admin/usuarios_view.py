@@ -8,6 +8,7 @@ from datetime import datetime
 from client.api_client import api_client, ApiError
 from config import UI
 from gui.async_utils import cargar_en_hilo
+from gui.components.ui_kit import Card, titulo_h2, etiqueta_campo, boton_primario, boton_secundario, boton_peligro
 
 
 def _fecha_hora(iso_str):
@@ -34,13 +35,7 @@ class UsuariosView(ctk.CTkFrame):
         self.grid_rowconfigure(0, weight=1)
 
         # ---- Panel izquierdo: lista ----
-        left = ctk.CTkFrame(
-            self,
-            fg_color=UI["color_card"],
-            border_color=UI["color_border"],
-            border_width=1,
-            corner_radius=12
-        )
+        left = Card(self)
         left.grid(row=0, column=0, sticky="nsew", padx=(20, 10), pady=20)
         left.grid_rowconfigure(1, weight=1)
         left.grid_columnconfigure(0, weight=1)
@@ -48,16 +43,10 @@ class UsuariosView(ctk.CTkFrame):
         header = ctk.CTkFrame(left, fg_color="transparent")
         header.grid(row=0, column=0, sticky="ew", padx=15, pady=(15, 5))
 
-        ctk.CTkLabel(
-            header, text="👥 GESTIÓN DE USUARIOS",
-            font=ctk.CTkFont(family=UI["fuente"], size=15, weight="bold"),
-            text_color=UI["color_accent"]
-        ).pack(side="left")
+        titulo_h2(header, "👥 Gestión de Usuarios").pack(side="left")
 
-        ctk.CTkButton(
-            header, text="+ Nuevo Usuario",
-            command=self._nuevo,
-            height=32, font=ctk.CTkFont(family=UI["fuente"], size=12), fg_color=UI["color_accent"], hover_color=UI["color_accent_hover"]
+        boton_primario(
+            header, "+ Nuevo Usuario", command=self._nuevo, height=32,
         ).pack(side="right")
 
         # Tabla de usuarios
@@ -73,8 +62,8 @@ class UsuariosView(ctk.CTkFrame):
             foreground=UI["color_text"],
             font=("Segoe UI", 10, "bold"))
         style.map("Usr.Treeview",
-            background=[("selected", "#E0F2FE")],
-            foreground=[("selected", "#1E3A8A")])
+            background=[("selected", UI["color_brand_tint"])],
+            foreground=[("selected", UI["color_brand"])])
 
         self._tree = ttk.Treeview(
             left,
@@ -98,39 +87,26 @@ class UsuariosView(ctk.CTkFrame):
         self._tree.bind("<<TreeviewSelect>>", self._on_select)
 
         # ---- Panel derecho: formulario ----
-        right = ctk.CTkFrame(
-            self,
-            fg_color=UI["color_card"],
-            border_color=UI["color_border"],
-            border_width=1,
-            corner_radius=12
-        )
+        right = Card(self)
         right.grid(row=0, column=1, sticky="nsew", padx=(10, 20), pady=20)
 
-        ctk.CTkLabel(
-            right, text="📝 Datos del Usuario",
-            font=ctk.CTkFont(family=UI["fuente"], size=14, weight="bold"),
-            text_color=UI["color_text"]
-        ).pack(padx=18, pady=(15, 10), anchor="w")
+        titulo_h2(right, "📝 Datos del Usuario").pack(padx=18, pady=(15, 10), anchor="w")
 
         ctk.CTkFrame(right, height=1, fg_color=UI["color_border"]).pack(
             fill="x", padx=15, pady=(0, 15))
 
         # Username
-        ctk.CTkLabel(right, text="Nombre de usuario *", font=ctk.CTkFont(family=UI["fuente"], size=11),
-                     text_color=UI["color_muted"], anchor="w").pack(fill="x", padx=18, pady=(0, 2))
+        etiqueta_campo(right, "Nombre de usuario *", anchor="w").pack(fill="x", padx=18, pady=(0, 2))
         self._f_username = ctk.CTkEntry(right, height=35, font=ctk.CTkFont(family=UI["fuente"], size=12))
         self._f_username.pack(fill="x", padx=18, pady=(0, 10))
 
         # Nombre completo
-        ctk.CTkLabel(right, text="Nombre completo *", font=ctk.CTkFont(family=UI["fuente"], size=11),
-                     text_color=UI["color_muted"], anchor="w").pack(fill="x", padx=18, pady=(0, 2))
+        etiqueta_campo(right, "Nombre completo *", anchor="w").pack(fill="x", padx=18, pady=(0, 2))
         self._f_nombre = ctk.CTkEntry(right, height=35, font=ctk.CTkFont(family=UI["fuente"], size=12))
         self._f_nombre.pack(fill="x", padx=18, pady=(0, 10))
 
         # Nivel
-        ctk.CTkLabel(right, text="Nivel de acceso", font=ctk.CTkFont(family=UI["fuente"], size=11),
-                     text_color=UI["color_muted"], anchor="w").pack(fill="x", padx=18, pady=(0, 2))
+        etiqueta_campo(right, "Nivel de acceso", anchor="w").pack(fill="x", padx=18, pady=(0, 2))
         self._f_nivel = ctk.CTkComboBox(
             right,
             values=["1 — Administrador", "2 — Supervisor", "3 — Operador"],
@@ -147,13 +123,11 @@ class UsuariosView(ctk.CTkFrame):
                      font=ctk.CTkFont(family=UI["fuente"], size=12, weight="bold"),
                      text_color=UI["color_text"]).pack(fill="x", padx=18)
 
-        ctk.CTkLabel(right, text="Nueva contraseña *", font=ctk.CTkFont(family=UI["fuente"], size=11),
-                     text_color=UI["color_muted"], anchor="w").pack(fill="x", padx=18, pady=(5, 2))
+        etiqueta_campo(right, "Nueva contraseña *", anchor="w").pack(fill="x", padx=18, pady=(5, 2))
         self._f_pass = ctk.CTkEntry(right, show="●", height=35, font=ctk.CTkFont(family=UI["fuente"], size=12))
         self._f_pass.pack(fill="x", padx=18, pady=(0, 8))
 
-        ctk.CTkLabel(right, text="Confirmar contraseña *", font=ctk.CTkFont(family=UI["fuente"], size=11),
-                     text_color=UI["color_muted"], anchor="w").pack(fill="x", padx=18, pady=(0, 2))
+        etiqueta_campo(right, "Confirmar contraseña *", anchor="w").pack(fill="x", padx=18, pady=(0, 2))
         self._f_pass2 = ctk.CTkEntry(right, show="●", height=35, font=ctk.CTkFont(family=UI["fuente"], size=12))
         self._f_pass2.pack(fill="x", padx=18, pady=(0, 15))
 
@@ -161,28 +135,18 @@ class UsuariosView(ctk.CTkFrame):
         btn_frame = ctk.CTkFrame(right, fg_color="transparent")
         btn_frame.pack(fill="x", padx=18, pady=5)
 
-        ctk.CTkButton(
-            btn_frame, text="💾 Guardar",
-            command=self._guardar,
-            height=40, font=ctk.CTkFont(family=UI["fuente"], size=13, weight="bold"),
-            fg_color=UI["color_success"], hover_color=UI["color_success_hover"]
+        boton_primario(
+            btn_frame, "💾 Guardar", command=self._guardar, height=40,
         ).pack(fill="x", pady=(0, 5))
 
-        self._btn_activar = ctk.CTkButton(
-            btn_frame, text="✅ Activar / 🚫 Desactivar",
-            command=self._toggle_activo,
-            height=36, font=ctk.CTkFont(family=UI["fuente"], size=12),
-            fg_color=UI["color_warning"], hover_color=UI["color_accent_hover"],
-            state="disabled"
+        self._btn_activar = boton_secundario(
+            btn_frame, "✅ Activar / 🚫 Desactivar", command=self._toggle_activo,
+            height=36, state="disabled",
         )
         self._btn_activar.pack(fill="x", pady=(0, 5))
 
-        ctk.CTkButton(
-            btn_frame, text="✕ Limpiar",
-            command=self._limpiar,
-            height=36, font=ctk.CTkFont(family=UI["fuente"], size=12), fg_color="transparent",
-            border_color=UI["color_border"], border_width=1,
-            text_color=UI["color_muted"], hover_color=UI["color_bg"]
+        boton_secundario(
+            btn_frame, "✕ Limpiar", command=self._limpiar, height=36,
         ).pack(fill="x")
 
     def _cargar_datos(self):

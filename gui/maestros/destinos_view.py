@@ -4,6 +4,7 @@ from tkinter import messagebox, ttk
 from client.api_client import api_client, ApiError
 from config import UI
 from gui.async_utils import cargar_en_hilo
+from gui.components.ui_kit import Card, titulo_h2, etiqueta_campo, boton_primario, boton_secundario, boton_peligro
 
 _DEBOUNCE_MS = 300
 
@@ -21,21 +22,15 @@ class DestinosView(ctk.CTkFrame):
         self.grid_columnconfigure(1, weight=1)
         self.grid_rowconfigure(0, weight=1)
 
-        left = ctk.CTkFrame(
-            self,
-            fg_color=UI["color_card"],
-            border_color=UI["color_border"],
-            border_width=1,
-            corner_radius=12
-        )
+        left = Card(self)
         left.grid(row=0, column=0, sticky="nsew", padx=(20,10), pady=20)
         left.grid_rowconfigure(2, weight=1)
         left.grid_columnconfigure(0, weight=1)
 
         header = ctk.CTkFrame(left, fg_color="transparent")
         header.grid(row=0, column=0, sticky="ew", padx=15, pady=(15,5))
-        ctk.CTkLabel(header, text="📍 DESTINOS", font=ctk.CTkFont(family=UI["fuente"], size=15,weight="bold"), text_color=UI["color_accent"]).pack(side="left")
-        ctk.CTkButton(header, text="+ Nuevo", command=self._nuevo, height=32, width=90, font=ctk.CTkFont(family=UI["fuente"], size=12), fg_color=UI["color_accent"], hover_color=UI["color_accent_hover"]).pack(side="right")
+        titulo_h2(header, "📍 Destinos").pack(side="left")
+        boton_primario(header, "+ Nuevo", command=self._nuevo, height=32, width=90).pack(side="right")
 
         self._entry_buscar = ctk.CTkEntry(left, placeholder_text="🔍 Buscar...", height=35)
         self._entry_buscar.grid(row=1, column=0, sticky="ew", padx=15, pady=(0,5))
@@ -53,8 +48,8 @@ class DestinosView(ctk.CTkFrame):
             foreground=UI["color_text"],
             font=("Segoe UI",10,"bold"))
         style.map("Dest.Treeview",
-            background=[("selected","#E0F2FE")],
-            foreground=[("selected","#1E3A8A")])
+            background=[("selected", UI["color_brand_tint"])],
+            foreground=[("selected", UI["color_brand"])])
 
         self._tree = ttk.Treeview(left, columns=("codigo","nombre","descripcion","estado"), show="headings", style="Dest.Treeview")
         for col, titulo, ancho in [("codigo","CÓDIGO",90),("nombre","NOMBRE",200),("descripcion","DESCRIPCIÓN",220),("estado","ESTADO",70)]:
@@ -66,33 +61,27 @@ class DestinosView(ctk.CTkFrame):
         scroll.grid(row=2, column=1, sticky="ns")
         self._tree.bind("<<TreeviewSelect>>", self._on_select)
 
-        right = ctk.CTkFrame(
-            self,
-            fg_color=UI["color_card"],
-            border_color=UI["color_border"],
-            border_width=1,
-            corner_radius=12
-        )
+        right = Card(self)
         right.grid(row=0, column=1, sticky="nsew", padx=(10,20), pady=20)
 
-        ctk.CTkLabel(right, text="📝 Datos del Destino", font=ctk.CTkFont(family=UI["fuente"], size=14,weight="bold"), text_color=UI["color_text"]).pack(padx=18, pady=(15,10), anchor="w")
+        titulo_h2(right, "📝 Datos del Destino").pack(padx=18, pady=(15,10), anchor="w")
         ctk.CTkFrame(right, height=1, fg_color=UI["color_border"]).pack(fill="x", padx=15, pady=(0,15))
 
         self._f_codigo = self._campo(right, "Código *")
         self._f_nombre = self._campo(right, "Nombre *")
-        ctk.CTkLabel(right, text="Descripción", font=ctk.CTkFont(family=UI["fuente"], size=11), text_color=UI["color_muted"], anchor="w").pack(fill="x", padx=18)
+        etiqueta_campo(right, "Descripción", anchor="w").pack(fill="x", padx=18)
         self._f_desc = ctk.CTkTextbox(right, height=80, font=ctk.CTkFont(family=UI["fuente"], size=12))
         self._f_desc.pack(fill="x", padx=18, pady=(2,12))
 
         btn = ctk.CTkFrame(right, fg_color="transparent")
         btn.pack(fill="x", padx=18, pady=10)
-        ctk.CTkButton(btn, text="💾 Guardar", command=self._guardar, height=40, font=ctk.CTkFont(family=UI["fuente"], size=13, weight="bold"), fg_color=UI["color_success"], hover_color=UI["color_success_hover"]).pack(fill="x", pady=(0,5))
-        self._btn_desact = ctk.CTkButton(btn, text="🚫 Desactivar", command=self._desactivar, height=36, font=ctk.CTkFont(family=UI["fuente"], size=12), fg_color=UI["color_danger"], hover_color=UI["color_danger_hover"], state="disabled")
+        boton_primario(btn, "💾 Guardar", command=self._guardar, height=40).pack(fill="x", pady=(0,5))
+        self._btn_desact = boton_peligro(btn, "🚫 Desactivar", command=self._desactivar, height=36, state="disabled")
         self._btn_desact.pack(fill="x", pady=(0,5))
-        ctk.CTkButton(btn, text="✕ Limpiar", command=self._limpiar, height=36, font=ctk.CTkFont(family=UI["fuente"], size=12), fg_color="transparent", border_color=UI["color_border"], border_width=1, text_color=UI["color_muted"], hover_color=UI["color_bg"]).pack(fill="x")
+        boton_secundario(btn, "✕ Limpiar", command=self._limpiar, height=36).pack(fill="x")
 
     def _campo(self, parent, etiqueta):
-        ctk.CTkLabel(parent, text=etiqueta, font=ctk.CTkFont(family=UI["fuente"], size=11), text_color=UI["color_muted"], anchor="w").pack(fill="x", padx=18, pady=(0,2))
+        etiqueta_campo(parent, etiqueta, anchor="w").pack(fill="x", padx=18, pady=(0,2))
         entry = ctk.CTkEntry(parent, height=35, font=ctk.CTkFont(family=UI["fuente"], size=12))
         entry.pack(fill="x", padx=18, pady=(0,10))
         return entry

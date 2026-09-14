@@ -9,6 +9,7 @@ from client.api_client import api_client, ApiError
 import os
 from config import UI, REPORTS_DIR
 from gui.async_utils import cargar_en_hilo
+from gui.components.ui_kit import Card, titulo_h2, boton_primario, boton_secundario
 
 # Mapea la etiqueta legible del combo al valor real de Pesada.estado.
 # (antes de esta migración el combo usaba "Completada"/"Pendiente"/"Anulada"
@@ -45,20 +46,11 @@ class KardexView(ctk.CTkFrame):
         self.grid_rowconfigure(1, weight=1)
 
         # ---- Barra de filtros ----
-        filtros = ctk.CTkFrame(
-            self,
-            fg_color=UI["color_card"],
-            border_color=UI["color_border"],
-            border_width=1,
-            corner_radius=10
-        )
+        filtros = Card(self)
         filtros.grid(row=0, column=0, sticky="ew", padx=20, pady=(15, 5))
 
-        ctk.CTkLabel(
-            filtros, text="📋 KARDEX DE PESADAS",
-            font=ctk.CTkFont(family=UI["fuente"], size=15, weight="bold"),
-            text_color=UI["color_accent"]
-        ).grid(row=0, column=0, padx=15, pady=(12, 5), sticky="w", columnspan=8)
+        titulo_h2(filtros, "📋 Kardex de Pesadas").grid(
+            row=0, column=0, padx=15, pady=(12, 5), sticky="w", columnspan=8)
 
         # Fechas
         ctk.CTkLabel(filtros, text="Desde:", font=ctk.CTkFont(family=UI["fuente"], size=11),
@@ -91,20 +83,15 @@ class KardexView(ctk.CTkFrame):
         self._combo_estado.set("Todos")
 
         # Botones
-        ctk.CTkButton(
-            filtros, text="🔍 Buscar", command=self._buscar,
-            height=32, width=100, fg_color=UI["color_accent"], hover_color=UI["color_accent_hover"]
+        boton_primario(
+            filtros, "🔍 Buscar", command=self._buscar, height=32, width=100,
         ).grid(row=1, column=6, padx=(0, 5))
 
         # Atajo del reporte de fin de día: pone Desde=Hasta=hoy y filtra
         # directo, en vez de que el operador tenga que escribir la fecha
         # a mano para ver "todos los camiones que pasaron hoy".
-        ctk.CTkButton(
-            filtros, text="📅 Hoy", command=self._filtrar_hoy,
-            height=32, width=80, fg_color="transparent",
-            border_color=UI["color_accent"], border_width=1,
-            text_color=UI["color_accent"], hover_color=UI["color_bg"],
-            font=ctk.CTkFont(family=UI["fuente"], size=12)
+        boton_secundario(
+            filtros, "📅 Hoy", command=self._filtrar_hoy, height=32, width=80,
         ).grid(row=1, column=7, padx=(0, 5))
 
         # Exportar (PDF/Excel) requiere "reportes_exportar" — el backend
@@ -122,13 +109,7 @@ class KardexView(ctk.CTkFrame):
             ).grid(row=1, column=9, padx=(0, 15), pady=10)
 
         # ---- Tabla de resultados ----
-        tabla_frame = ctk.CTkFrame(
-            self,
-            fg_color=UI["color_card"],
-            border_color=UI["color_border"],
-            border_width=1,
-            corner_radius=10
-        )
+        tabla_frame = Card(self)
         tabla_frame.grid(row=1, column=0, sticky="nsew", padx=20, pady=(5, 15))
         tabla_frame.grid_rowconfigure(1, weight=1)
         tabla_frame.grid_columnconfigure(0, weight=1)
@@ -170,8 +151,8 @@ class KardexView(ctk.CTkFrame):
             font=("Segoe UI", 10, "bold")
         )
         style.map("Kardex.Treeview",
-            background=[("selected", "#E0F2FE")],
-            foreground=[("selected", "#1E3A8A")])
+            background=[("selected", UI["color_brand_tint"])],
+            foreground=[("selected", UI["color_brand"])])
 
         columnas = ("ticket", "fecha", "placa", "conductor",
                     "producto", "bruto", "tara", "neto", "estado")

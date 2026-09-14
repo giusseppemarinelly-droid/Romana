@@ -7,6 +7,7 @@ from tkinter import messagebox
 from client.api_client import api_client, ApiError
 from config import EMPRESA, UI
 from gui.async_utils import cargar_en_hilo
+from gui.components.ui_kit import Card, titulo_h2, etiqueta_campo, boton_primario
 
 
 class ConfiguracionView(ctk.CTkFrame):
@@ -68,43 +69,21 @@ class ConfiguracionView(ctk.CTkFrame):
         self._agregar_campos(scroll, params_display, row_start=7, col=1)
 
         # ---- Botón guardar ----
-        ctk.CTkButton(
-            scroll,
-            text="💾 Guardar Configuración",
-            command=self._guardar,
-            height=48,
-            font=ctk.CTkFont(family=UI["fuente"], size=14, weight="bold"),
-            fg_color=UI["color_success"],
-            hover_color=UI["color_success_hover"],
-            corner_radius=10
+        boton_primario(
+            scroll, "💾 Guardar Configuración", command=self._guardar, height=48,
         ).grid(row=12, column=0, columnspan=2, padx=10, pady=20, sticky="ew")
 
     def _seccion(self, parent, titulo, row, col):
         """Crea un header de sección."""
-        ctk.CTkLabel(
-            parent,
-            text=titulo,
-            font=ctk.CTkFont(family=UI["fuente"], size=13, weight="bold"),
-            text_color=UI["color_accent"]
-        ).grid(row=row, column=col, padx=15, pady=(15, 5), sticky="w")
+        titulo_h2(parent, titulo).grid(row=row, column=col, padx=15, pady=(15, 5), sticky="w")
 
     def _agregar_campos(self, parent, params, row_start, col):
         """Crea campos de entrada para cada parámetro."""
         for i, (clave, etiqueta) in enumerate(params):
-            frame = ctk.CTkFrame(
-                parent,
-                fg_color=UI["color_card"],
-                border_color=UI["color_border"],
-                border_width=1,
-                corner_radius=8
-            )
+            frame = Card(parent)
             frame.grid(row=row_start + i, column=col, padx=10, pady=4, sticky="ew")
 
-            ctk.CTkLabel(
-                frame, text=etiqueta,
-                font=ctk.CTkFont(family=UI["fuente"], size=11),
-                text_color=UI["color_muted"], anchor="w"
-            ).pack(fill="x", padx=12, pady=(8, 2))
+            etiqueta_campo(frame, etiqueta, anchor="w").pack(fill="x", padx=12, pady=(8, 2))
 
             entry = ctk.CTkEntry(frame, height=35, font=ctk.CTkFont(family=UI["fuente"], size=12))
             entry.pack(fill="x", padx=12, pady=(0, 8))

@@ -9,6 +9,10 @@ from config import UI
 from client.api_client import api_client, ApiError
 from hardware.display_manager import leer_peso_actual, es_peso_estable
 from gui.async_utils import cargar_en_hilo
+from gui.components.ui_kit import (
+    Card, boton_primario, boton_secundario, boton_peligro,
+    titulo_h2, texto_ayuda, etiqueta_campo,
+)
 
 
 # Mismo estilo de campos de entrada que pesaje_entrada_view.py.
@@ -16,7 +20,7 @@ _INPUT_STYLE = dict(
     fg_color=UI["color_input_bg"],
     border_color=UI["color_border"],
     border_width=2,
-    corner_radius=8,
+    corner_radius=UI["radio_control"],
 )
 
 UMBRAL_APROBACION_PREVIEW_PCT = 10  # Solo para el aviso en pantalla -- el backend decide con el valor real configurado.
@@ -74,47 +78,39 @@ class PesajeSalidaView(ctk.CTkFrame):
     # ----------------------------------------------------------
     def _construir_lista(self):
         """Panel izquierdo — cola de camiones en planta."""
-        frame = ctk.CTkFrame(self, fg_color=UI["color_card"],
-                              border_color=UI["color_border"],
-                              border_width=1, corner_radius=12)
+        frame = Card(self)
         frame.grid(row=0, column=0, sticky="nsew",
                    padx=(20, 8), pady=20)
         frame.grid_rowconfigure(2, weight=1)
         frame.grid_columnconfigure(0, weight=1)
 
         # Header
-        ctk.CTkLabel(
-            frame, text="↑  CAMIONES EN PLANTA",
-            font=ctk.CTkFont(family=UI["fuente"], size=14, weight="bold"),
-            text_color=UI["color_accent"]
-        ).grid(row=0, column=0, padx=16, pady=(16, 4), sticky="w")
+        titulo_h2(frame, "↑  Camiones en Planta").grid(
+            row=0, column=0, padx=16, pady=(16, 4), sticky="w")
 
-        ctk.CTkLabel(
+        texto_ayuda(
             frame,
-            text="Seleccione el camión que ya está cargado para capturar su peso de salida.",
-            font=ctk.CTkFont(family=UI["fuente"], size=11),
-            text_color=UI["color_muted"],
-            wraplength=400, justify="left"
+            "Seleccione el camión que ya está cargado para capturar su peso de salida.",
         ).grid(row=1, column=0, padx=16, pady=(0, 8), sticky="w")
 
         # Tabla
         style = ttk.Style()
         style.theme_use("default")
         style.configure("Salida.Treeview",
-            background="#ffffff",
-            foreground="#1e293b",
-            fieldbackground="#f8fafc",
+            background=UI["color_card"],
+            foreground=UI["color_text"],
+            fieldbackground=UI["color_input_bg"],
             rowheight=32,
             font=("Segoe UI", 11)
         )
         style.configure("Salida.Treeview.Heading",
-            background="#f1f5f9",
-            foreground="#1e293b",
+            background=UI["color_bg"],
+            foreground=UI["color_text"],
             font=("Segoe UI", 10, "bold")
         )
         style.map("Salida.Treeview",
-            background=[("selected", "#dbeafe")],
-            foreground=[("selected", "#1e3a8a")]
+            background=[("selected", UI["color_brand_tint"])],
+            foreground=[("selected", UI["color_brand"])]
         )
 
         cols = ("ticket", "placa", "tipo", "producto", "peso_entrada", "estado", "hora")
@@ -147,15 +143,9 @@ class PesajeSalidaView(ctk.CTkFrame):
         btn_frame.grid(row=3, column=0, columnspan=2, sticky="ew",
                        padx=10, pady=(0, 12))
 
-        ctk.CTkButton(
-            btn_frame, text="↻  Actualizar lista",
-            command=self._cargar_cola,
+        boton_secundario(
+            btn_frame, "↻  Actualizar lista", command=self._cargar_cola,
             height=32, width=150,
-            fg_color="transparent",
-            border_color=UI["color_border"], border_width=1,
-            text_color=UI["color_text"],
-            hover_color=UI["color_bg"],
-            font=ctk.CTkFont(family=UI["fuente"], size=12)
         ).pack(side="left", padx=(0, 8))
 
         # Contador
@@ -169,11 +159,7 @@ class PesajeSalidaView(ctk.CTkFrame):
     # ----------------------------------------------------------
     def _construir_panel_detalle(self):
         """Panel derecho — detalle del camión seleccionado + captura."""
-        self._panel_detalle = ctk.CTkFrame(
-            self, fg_color=UI["color_card"],
-            border_color=UI["color_border"],
-            border_width=1, corner_radius=12
-        )
+        self._panel_detalle = Card(self)
         self._panel_detalle.grid(row=0, column=1, sticky="nsew",
                                   padx=(8, 20), pady=20)
         self._panel_detalle.grid_columnconfigure(0, weight=1)
@@ -321,11 +307,8 @@ class PesajeSalidaView(ctk.CTkFrame):
             row=row, column=0, sticky="ew", pady=6); row += 1
 
         # Peso actual de la báscula
-        ctk.CTkLabel(
-            self._detalle_frame, text="PESO ACTUAL BÁSCULA",
-            font=ctk.CTkFont(family=UI["fuente"], size=10, weight="bold"),
-            text_color=UI["color_muted"]
-        ).grid(row=row, column=0, sticky="w"); row += 1
+        etiqueta_campo(self._detalle_frame, "Peso actual báscula").grid(
+            row=row, column=0, sticky="w"); row += 1
 
         self._lbl_peso_actual = ctk.CTkLabel(
             self._detalle_frame, text="--- KG",
@@ -367,11 +350,8 @@ class PesajeSalidaView(ctk.CTkFrame):
 
         # Datos de la guía del transportista -- necesarios para que CC
         # reciba la info completa y para decidir la aprobación automática.
-        ctk.CTkLabel(
-            self._detalle_frame, text="DATOS DE LA GUÍA",
-            font=ctk.CTkFont(family=UI["fuente"], size=10, weight="bold"),
-            text_color=UI["color_muted"]
-        ).grid(row=row, column=0, sticky="w"); row += 1
+        etiqueta_campo(self._detalle_frame, "Datos de la guía").grid(
+            row=row, column=0, sticky="w"); row += 1
 
         self._entry_codigo_viaje = ctk.CTkEntry(
             self._detalle_frame, placeholder_text="Código del viaje",
@@ -395,29 +375,17 @@ class PesajeSalidaView(ctk.CTkFrame):
         self._entry_bultos.grid(row=row, column=0, sticky="ew", pady=(0, 8)); row += 1
 
         # Botón capturar
-        self._btn_capturar = ctk.CTkButton(
+        self._btn_capturar = boton_primario(
             self._detalle_frame,
-            text="⚖  CAPTURAR PESO\n→ Enviar a Centro de Costos",
-            command=self._capturar_peso,
-            height=60,
-            font=ctk.CTkFont(family=UI["fuente"], size=13, weight="bold"),
-            fg_color=UI["color_success"],
-            hover_color="#059669",
-            corner_radius=10
+            "⚖  CAPTURAR PESO\n→ Enviar a Centro de Costos",
+            command=self._capturar_peso, height=60,
         )
         self._btn_capturar.grid(row=row, column=0, sticky="ew", pady=(4, 8)); row += 1
 
         # Botón anular
-        ctk.CTkButton(
-            self._detalle_frame,
-            text="🗑  Anular esta entrada",
-            command=self._anular,
-            height=32,
-            fg_color="transparent",
-            border_color="#fca5a5", border_width=1,
-            text_color="#dc2626",
-            hover_color="#fef2f2",
-            font=ctk.CTkFont(family=UI["fuente"], size=11)
+        boton_peligro(
+            self._detalle_frame, "🗑  Anular esta entrada",
+            command=self._anular, height=32,
         ).grid(row=row, column=0, sticky="ew"); row += 1
 
         # Iniciar actualización en vivo

@@ -5,6 +5,12 @@
 import customtkinter as ctk
 from client.api_client import api_client
 from config import UI
+from gui.components.icons import icono
+
+# Íconos propios (gui/components/icons.py) en vez de emoji -- se veían
+# inconsistentes entre sí (cada uno con su propio estilo/color de fuente
+# de emoji de Windows). Nombre acá = clave en icons._ICONOS.
+_ICONO_DASHBOARD = "dashboard"
 
 
 class Sidebar(ctk.CTkFrame):
@@ -16,29 +22,29 @@ class Sidebar(ctk.CTkFrame):
     MENU_ITEMS = [
         # --- Sección pesaje (Romana) ---
         ("separator", "PESAJE", None),
-        ("Entrada",          "pesaje_entrada",    "pesaje_entrada",  "↓"),
-        ("Salida / Capturar","pesaje_salida",     "pesaje_salida",   "↑"),
-        ("Completar Pesaje", "completar_pesaje",  "pesaje_completar","✔"),
-        ("Kardex",           "kardex",            "reportes_ver",    "≡"),
-        ("Corte",            "corte",             "corte_pesadas",   "✂"),
+        ("Entrada",          "pesaje_entrada",    "pesaje_entrada",  "entrada"),
+        ("Salida / Capturar","pesaje_salida",     "pesaje_salida",   "salida"),
+        ("Completar Pesaje", "completar_pesaje",  "pesaje_completar","completar"),
+        ("Kardex",           "kardex",            "reportes_ver",    "kardex"),
+        ("Corte",            "corte",             "corte_pesadas",   "corte"),
 
         # --- Sección Centro de Costos ---
         ("separator", "CENTRO DE COSTOS", None),
-        ("Aprobaciones",     "centro_costos",     "centro_costos",   "📋"),
+        ("Aprobaciones",     "centro_costos",     "centro_costos",   "aprobaciones"),
 
         # --- Sección maestros ---
         ("separator", "MAESTROS", None),
-        ("Vehículos",   "vehiculos",   "maestros_ver", "🚛"),
-        ("Conductores", "conductores", "maestros_ver", "👤"),
-        ("Proveedores", "proveedores", "maestros_ver", "🏭"),
-        ("Transportistas", "empresas_transportistas", "maestros_ver", "🚚"),
-        ("Productos",   "productos",   "maestros_ver", "📦"),
-        ("Destinos",    "destinos",    "maestros_ver", "📍"),
+        ("Vehículos",   "vehiculos",   "maestros_ver", "vehiculos"),
+        ("Conductores", "conductores", "maestros_ver", "conductores"),
+        ("Proveedores", "proveedores", "maestros_ver", "proveedores"),
+        ("Transportistas", "empresas_transportistas", "maestros_ver", "transportistas"),
+        ("Productos",   "productos",   "maestros_ver", "productos"),
+        ("Destinos",    "destinos",    "maestros_ver", "destinos"),
 
         # --- Sección administración ---
         ("separator", "ADMIN", None),
-        ("Usuarios",    "usuarios",      "admin_usuarios",     "👥"),
-        ("Config",      "configuracion", "admin_configuracion", "⚙"),
+        ("Usuarios",    "usuarios",      "admin_usuarios",     "usuarios"),
+        ("Config",      "configuracion", "admin_configuracion", "configuracion"),
     ]
 
     def __init__(self, parent, callback_navegar, callback_logout):
@@ -75,7 +81,9 @@ class Sidebar(ctk.CTkFrame):
 
         ctk.CTkLabel(
             brand_frame,
-            text="⚖  ROMANA",
+            text="ROMANA",
+            image=icono("balanza", color="#FFFFFF", size=26),
+            compound="left",
             font=ctk.CTkFont(family=UI["fuente"], size=20, weight="bold"),
             text_color="#FFFFFF"
         ).pack(pady=(16, 2))
@@ -98,7 +106,7 @@ class Sidebar(ctk.CTkFrame):
         scroll.grid_columnconfigure(0, weight=1)
 
         # Dashboard (siempre visible)
-        btn_dash = self._crear_boton(scroll, "🏠  Dashboard", "dashboard")
+        btn_dash = self._crear_boton(scroll, "Dashboard", "dashboard", _ICONO_DASHBOARD)
         btn_dash.pack(fill="x", padx=10, pady=(12, 4))
         self._botones["dashboard"] = btn_dash
 
@@ -123,12 +131,12 @@ class Sidebar(ctk.CTkFrame):
                 ).pack(fill="x", padx=10, pady=(0, 4))
 
             else:
-                texto, destino, permiso, icono = item
+                texto, destino, permiso, nombre_icono = item
 
                 if permiso and not api_client.tiene_permiso(permiso):
                     continue
 
-                btn = self._crear_boton(scroll, f"{icono}  {texto}", destino)
+                btn = self._crear_boton(scroll, texto, destino, nombre_icono)
                 btn.pack(fill="x", padx=10, pady=1)
                 self._botones[destino] = btn
 
@@ -202,18 +210,20 @@ class Sidebar(ctk.CTkFrame):
         )
         btn_logout.grid(row=2, column=0, sticky="ew", padx=12, pady=(0, 12))
 
-    def _crear_boton(self, parent, texto, destino):
+    def _crear_boton(self, parent, texto, destino, nombre_icono):
         """Crea un botón del menú con estilo consistente."""
         return ctk.CTkButton(
             parent,
-            text=texto,
+            text=f"  {texto}",
+            image=icono(nombre_icono, color=UI["color_sidebar_text"], size=17),
+            compound="left",
             command=lambda d=destino: self.callback_navegar(d),
             fg_color="transparent",
             hover_color=UI["color_sidebar_hover"],
             text_color=UI["color_sidebar_text"],
             anchor="w",
             height=38,
-            corner_radius=8,
+            corner_radius=UI["radio_control"],
             font=ctk.CTkFont(family=UI["fuente"], size=13)
         )
 
