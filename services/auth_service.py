@@ -23,9 +23,58 @@
 # o en `client.api_client.api_client.usuario` (GUI).
 
 import bcrypt
+import threading
+import time
 from datetime import datetime
+from typing import Optional
 from database.engine import SessionLocal
 from database.models import Usuario
+
+
+# ============================================================
+# LOGIN: límite de intentos fallidos (hallazgo I-09)
+# ============================================================
+# Estado en memoria de un solo proceso -- consistente con el resto del
+# proyecto (ver backend/ws/manager.py: un único worker de uvicorn, sin
+# pub/sub externo). Se pierde si el backend reinicia, que es aceptable
+# para esto (no es una lista de baneos permanente, solo frena fuerza
+# bruta puntual).
+_lock_intentos = threading.Lock()
+_intentos_fallidos: dict[str, dict] = {}  # username normalizado -> {"fallos": int, "bloqueado_hasta": float}
+
+_MAX_INTENTOS = 5
+_BLOQUEO_SEGUNDOS = 30
+
+# Hash "señuelo" para verificar contra él cuando el usuario no existe --
+# si no se hiciera esto, "usuario no existe" respondería más rápido que
+# "usuario existe, contraseña incorrecta" (que sí llama a bcrypt.checkpw,
+# ~200ms), y esa diferencia de tiempo permite enumerar usuarios válidos
+# aunque el mensaje de error sea idéntico en los dos casos.
+_HASH_SEÑUELO = bcrypt.hashpw("contraseña-señuelo-solo-para-timing".encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
+
+
+def _segundos_bloqueado(username: str) -> Optional[int]:
+    """Segundos restantes de bloqueo por intentos fallidos, o None si no está bloqueado."""
+    with _lock_intentos:
+        info = _intentos_fallidos.get(username)
+        if not info:
+            return None
+        restante = info["bloqueado_hasta"] - time.time()
+        return int(restante) + 1 if restante > 0 else None
+
+
+def _registrar_intento_fallido(username: str):
+    with _lock_intentos:
+        info = _intentos_fallidos.setdefault(username, {"fallos": 0, "bloqueado_hasta": 0.0})
+        info["fallos"] += 1
+        if info["fallos"] >= _MAX_INTENTOS:
+            info["bloqueado_hasta"] = time.time() + _BLOQUEO_SEGUNDOS
+            info["fallos"] = 0  # arranca de cero el conteo para el próximo ciclo
+
+
+def _limpiar_intentos_fallidos(username: str):
+    with _lock_intentos:
+        _intentos_fallidos.pop(username, None)
 
 
 # ============================================================
@@ -83,24 +132,39 @@ def verificar_credenciales(db, username: str, password: str) -> dict:
     if not username or not password:
         return {"exito": False, "mensaje": "Usuario y contraseña son requeridos", "usuario": None}
 
-    usuario = db.query(Usuario).filter(
-        Usuario.username == username.strip().lower()
-    ).first()
+    username_norm = username.strip().lower()
 
-    if not usuario:
-        return {"exito": False, "mensaje": "Usuario no encontrado", "usuario": None}
+    # Hallazgo I-09: límite de intentos fallidos, antes no existía --
+    # nada impedía probar contraseñas indefinidamente.
+    restante = _segundos_bloqueado(username_norm)
+    if restante is not None:
+        return {
+            "exito": False,
+            "mensaje": f"Demasiados intentos fallidos. Intente de nuevo en {restante}s.",
+            "usuario": None,
+        }
+
+    usuario = db.query(Usuario).filter(Usuario.username == username_norm).first()
+
+    # Hallazgo I-09: antes "usuario no encontrado" y "contraseña
+    # incorrecta" eran mensajes distintos -- permitía enumerar usuarios
+    # válidos probando nombres al azar. Mismo mensaje genérico para
+    # ambos casos, Y se llama a bcrypt.checkpw() igual aunque el usuario
+    # no exista (contra un hash señuelo) para que el tiempo de
+    # respuesta tampoco lo delate -- checkpw() es la parte lenta
+    # (~200ms) del login, así que "usuario no existe" respondía antes
+    # más rápido que "existe, contraseña mal".
+    hash_a_verificar = usuario.password_hash if usuario else _HASH_SEÑUELO
+    password_correcta = bcrypt.checkpw(password.encode("utf-8"), hash_a_verificar.encode("utf-8"))
+
+    if not usuario or not password_correcta:
+        _registrar_intento_fallido(username_norm)
+        return {"exito": False, "mensaje": "Usuario o contraseña incorrectos", "usuario": None}
 
     if not usuario.activo:
         return {"exito": False, "mensaje": "Usuario desactivado. Contacte al administrador", "usuario": None}
 
-    password_correcta = bcrypt.checkpw(
-        password.encode("utf-8"),
-        usuario.password_hash.encode("utf-8")
-    )
-
-    if not password_correcta:
-        return {"exito": False, "mensaje": "Contraseña incorrecta", "usuario": None}
-
+    _limpiar_intentos_fallidos(username_norm)
     usuario.last_login = datetime.now()
     db.commit()
     db.refresh(usuario)
