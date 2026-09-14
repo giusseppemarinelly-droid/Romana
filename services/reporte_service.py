@@ -3,6 +3,7 @@
 # ============================================================
 
 import io
+import os
 from datetime import datetime
 from config import EMPRESA
 
@@ -12,8 +13,9 @@ from reportlab.lib import colors
 from reportlab.lib.units import cm, mm
 from reportlab.platypus import (
     SimpleDocTemplate, Table, TableStyle, Paragraph,
-    Spacer, HRFlowable
+    Spacer, HRFlowable, Image
 )
+from reportlab.lib.utils import ImageReader
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_RIGHT
 
@@ -51,6 +53,26 @@ def _fmt_solo_fecha(dt) -> str:
 def _fmt_solo_hora(dt) -> str:
     """Solo la hora, en formato 12h con AM/PM (igual al ticket de referencia)."""
     return dt.strftime("%I:%M:%S %p") if dt else "—"
+
+
+def _logo_flowable(ancho):
+    """
+    Logo de EMPRESA['logo'] (config.py) escalado a `ancho` manteniendo la
+    proporción real del archivo -- devuelve None si el archivo no existe
+    o no se puede leer, para que el ticket se siga generando igual (con
+    el nombre en texto solamente) en vez de romper. No hay logo en el
+    repo por defecto (reports/templates/logo.png no está versionado, se
+    coloca a mano en cada instalación).
+    """
+    ruta = EMPRESA.get("logo")
+    if not ruta or not os.path.isfile(ruta):
+        return None
+    try:
+        ancho_px, alto_px = ImageReader(ruta).getSize()
+        alto = ancho * (alto_px / ancho_px)
+        return Image(ruta, width=ancho, height=alto)
+    except Exception:
+        return None
 
 
 # Traduce tipo_pesaje al lenguaje de "Operación" del formato de ticket
@@ -106,7 +128,12 @@ def generar_ticket_pdf(pesada) -> bytes:
                                       alignment=TA_RIGHT, leading=12)
 
     # ---- Encabezado: empresa a la izq., ticket nro/fecha a la der. ----
-    celda_empresa = [
+    celda_empresa = []
+    logo = _logo_flowable(4.5 * cm)
+    if logo:
+        celda_empresa.append(logo)
+        celda_empresa.append(Spacer(1, 3))
+    celda_empresa += [
         Paragraph(EMPRESA["nombre"], style_empresa),
         Paragraph(EMPRESA["direccion"], style_empresa_sub),
         Paragraph(f"VENEZUELA. TELF.{EMPRESA['telefono']}", style_empresa_sub),
