@@ -84,6 +84,14 @@ pip install -r requirements.txt
 python run_server.py
 ```
 
+Desde el hallazgo I-08 (2026-09-14), esto **falla al arrancar** si `API_HOST` no es local (`0.0.0.0` por defecto lo es) y `ROMANA_JWT_SECRET` no está exportado -- mensaje claro en consola explicando por qué. Afecta también el auto-arranque de `main.py` en localhost (ver más abajo): si tampoco tiene el secreto exportado, el subproceso muere al toque y `main.py` termina avisando "el backend no respondió a tiempo" sin decir la causa real -- hay que mirar la ventana del servidor que se abrió para verla. Para desarrollo en una sola máquina, cualquiera de las dos alcanza:
+
+```bash
+export ROMANA_JWT_SECRET=<lo que sea, para desarrollo>
+# o, si es puramente local y nunca se va a exponer en red:
+export ROMANA_API_HOST=127.0.0.1
+```
+
 Antes del primer arranque en una base de datos nueva:
 
 ```bash
