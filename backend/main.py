@@ -13,12 +13,15 @@
 # clientes.
 
 import logging
+import os
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, RedirectResponse
+from fastapi.staticfiles import StaticFiles
 
+from config import WEB_DIST_DIR
 from database.engine import crear_tablas
 from backend.routers import auth, pesadas, reportes, admin
 from backend.routers.maestros import todos_los_routers as routers_maestros
@@ -84,3 +87,45 @@ app.include_router(ws_router)
 @app.get("/health")
 def health():
     return {"status": "ok"}
+
+
+RUTA_WEB_SUPERVISION = "/supervision"
+
+
+def montar_web_supervision(app: FastAPI, directorio: str) -> bool:
+    """
+    Sirve la web de supervisión (web/dist, React compilado) desde este
+    mismo proceso: un solo servidor y un solo puerto, sin hosting aparte
+    (ver docs/SPEC-web-supervision.md). Mismo origen que la API, así que
+    la web tampoco necesita CORS.
+
+    Bajo /supervision y NO en "/", a propósito: montado en la raíz, el
+    StaticFiles se queda con cualquier request que ninguna ruta de la API
+    matchee del todo, y un GET a una ruta que solo acepta POST pasa de
+    405 "Method Not Allowed" a 404 (comprobado con Starlette 0.41, ver
+    backend/tests/test_web_supervision.py). Bajo un prefijo propio la API
+    responde exactamente igual que antes.
+
+    Si la web no está compilada (falta index.html) no monta nada y el
+    backend arranca igual: las estaciones de pesaje dependen de este
+    proceso, un frontend opcional sin compilar no puede tirarlo abajo.
+    """
+    if not os.path.isfile(os.path.join(directorio, "index.html")):
+        print(f"Aviso - web de supervisión no compilada ({directorio}): no se sirve. "
+              "Para servirla, correr `npm run build` en web/.")
+        return False
+
+    app.mount(RUTA_WEB_SUPERVISION, StaticFiles(directory=directorio, html=True),
+              name="web_supervision")
+
+    # api_route con HEAD explícito: @app.get de FastAPI, a diferencia de
+    # Starlette, no acepta HEAD solo -- un HEAD a la raíz daba 405.
+    @app.api_route("/", methods=["GET", "HEAD"], include_in_schema=False)
+    def _raiz():
+        return RedirectResponse(f"{RUTA_WEB_SUPERVISION}/")
+
+    print(f"OK - Web de supervisión en {RUTA_WEB_SUPERVISION}/")
+    return True
+
+
+montar_web_supervision(app, WEB_DIST_DIR)

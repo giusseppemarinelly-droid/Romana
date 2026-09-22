@@ -18,6 +18,7 @@ services/    Lógica de negocio y reglas de dominio (reusada por backend/)
 database/    Modelos SQLAlchemy + migraciones Alembic
 hardware/    Integración con báscula Toledo (puerto serie) + simulador -- local a la estación Romana
 reports/     Plantillas y salida de tickets/reportes
+web/         Web de supervisión de solo lectura (React + TS), servida por el backend bajo /supervision/
 ```
 
 Ninguna GUI toca Postgres directamente: hablan con `backend/` por HTTP (`client/api_client.py`) y WebSocket (`client/ws_client.py`). Solo `backend/main.py` (vía `run_server.py`) crea las tablas al arrancar.
@@ -64,6 +65,14 @@ Un vehículo no puede tener 2 pesadas activas a la vez — se aplica con un índ
 - Ojo con `self.after(ms, self._callback)` en bucle (polling propio, no `cargar_en_hilo`): si la pantalla se destruye (navegación) sin cancelar el `after_id` con `after_cancel()`, el timer sigue vivo para siempre referenciando widgets muertos -- cada visita a esa pantalla deja un timer fantasma más corriendo de fondo. Ver `destroy()` overrideado en `pesaje_entrada_view.py`/`pesaje_salida_view.py` (polling de peso de báscula) como el patrón a seguir para cualquier `self.after()` autoreprogramado nuevo.
 - Los íconos de la UI son caracteres Unicode simples (flechas `↓ ↑ ← →`, formas geométricas `● ◆ ▲`), no emoji con selector de variación (`️` U+FE0F) ni glifos del bloque "Miscellaneous Symbols and Arrows" (`⬇⬆` U+2B07/2B06) -- esos no tienen glifo en la fuente que usa Tkinter en Windows y se ven como recuadros vacíos ("tofu boxes"). Si un ícono nuevo se ve como un cuadrado roto al probarlo, es señal de estar fuera del rango seguro.
 - Todo `ctk.CTkFont(...)` en `gui/` debe fijar `family=UI["fuente"]` explícitamente, igual que los estilos de `ttk.Treeview` deben usar `"Segoe UI"` (no `"Helvetica"`). CustomTkinter cae en su propia fuente empaquetada ("Roboto" en Windows, ver `ThemeManager.theme["CTkFont"]`) cuando no se especifica `family` -- una pantalla nueva que se olvide de esto se va a ver con una tipografía distinta al resto de la app aunque use el mismo `UI["fuente"]` en todo lo demás.
+
+### Web de supervisión (`web/`)
+
+- Tercer cliente del mismo backend (React 19 + TypeScript + Vite + Tailwind v4), **solo lectura**, para Admin/Supervisor. Spec en `docs/SPEC-web-supervision.md`, plan y tareas en `tasks/plan.md` / `tasks/todo.md`. No reemplaza nada de la app de escritorio.
+- La sirve el propio backend (`montar_web_supervision` en `backend/main.py`) bajo `/supervision/`, **no en `/`**: montada en la raíz, el StaticFiles se quedaba con los requests que ninguna ruta matcheaba del todo y un método equivocado en la API pasaba de 405 a 404. Si `web/dist` no está compilado, el backend arranca igual y no la sirve.
+- **`web/dist/` se versiona en git a propósito** (el servidor de planta no tiene ni necesita Node). Si se toca `web/src`, correr `npm run build` (Node 24: `nvm use` dentro de `web/`) y commitear `web/dist/` **en el mismo commit** — si no, el servidor sirve la versión vieja sin avisar. `.gitattributes` lo marca `binary` (el git de Windows tiene `core.autocrlf=true`).
+- La única llamada no-GET de la web es `POST /api/v1/auth/login`. Nada de escritura de datos del negocio desde ahí.
+- Diseño: dos temas -- **claro por defecto con la paleta de `config.py` → UI** (si cambia un color allá, cambiarlo en `web/src/index.css` y `web/src/tema.ts`) y oscuro opcional (`[data-tema="oscuro"]`, botón en el sidebar). Escala cerrada en `web/src/index.css` (`@theme` borra los colores/tamaños/radios por defecto de Tailwind; `--spacing: 8px`, así que `p-2` = 16px, no 8). Los colores para Recharts están duplicados en `web/src/tema.ts`. `web/src/diseno.test.ts` falla si aparece un hex, un valor arbitrario `[..]`, un espaciado fraccionario o una sombra en los componentes. Detalle en la sección "Sistema de diseño" del spec.
 
 ### Hardware (`hardware/`)
 

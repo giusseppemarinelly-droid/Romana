@@ -24,6 +24,12 @@ DATABASE_URL = os.environ.get(
 REPORTS_DIR = os.path.join(BASE_DIR, "reports", "output")
 TEMPLATES_DIR = os.path.join(BASE_DIR, "reports", "templates")
 
+# Web de supervisión compilada (`npm run build` en web/). La sirve el
+# propio backend bajo /supervision/ -- ver backend/main.py
+# (montar_web_supervision). Si no está compilada, el backend arranca
+# igual y simplemente no la sirve.
+WEB_DIST_DIR = os.path.join(BASE_DIR, "web", "dist")
+
 # -------------------------------------------------------
 # INFORMACIÓN DE LA EMPRESA
 # -------------------------------------------------------

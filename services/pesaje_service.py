@@ -7,7 +7,7 @@
 #   3. APROBACION: CC aprueba → "aprobado" / rechaza → "rechazado"
 #   4. COMPLETAR: Romana llena datos finales → "completado"
 
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Optional
 from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
@@ -222,6 +222,113 @@ def obtener_estadisticas_dashboard() -> dict:
         }
     finally:
         db.close()
+
+
+def obtener_estadisticas_series(dias: int = 14) -> dict:
+    """
+    Estadísticas para la web de supervisión: indicadores del día, serie
+    diaria (cuántas se cerraron y cuánto tardó en promedio liberar cada
+    camión) y distribución por tipo de pesaje.
+
+    Los conteos simples se agregan en SQL. La serie, en cambio, se
+    calcula en Python sobre una consulta ACOTADA a los últimos `dias`:
+    restar timestamps en SQL se escribe distinto en Postgres y en SQLite
+    (que es contra el que corren los tests), y no vale meter SQL crudo de
+    un dialecto para ahorrarse un bucle sobre unas pocas decenas de
+    filas. Lo importante es que la consulta no crece con el tamaño de la
+    tabla, sino con la ventana pedida -- por eso el endpoint acota `dias`.
+    """
+    db = SessionLocal()
+    try:
+        ahora = datetime.now()
+        hoy = ahora.date()
+        desde = (ahora - timedelta(days=dias - 1)).replace(hour=0, minute=0, second=0, microsecond=0)
+
+        en_planta = db.query(func.count(Pesada.id)).filter(
+            Pesada.estado == "en_planta", Pesada.anulada == False
+        ).scalar() or 0
+
+        pendientes_aprobacion = db.query(func.count(Pesada.id)).filter(
+            Pesada.estado == "pendiente_aprobacion", Pesada.anulada == False
+        ).scalar() or 0
+
+        # Una sola pasada por las pesadas cerradas de la ventana.
+        filas = db.query(
+            Pesada.fecha_entrada, Pesada.fecha_salida, Pesada.tipo_pesaje,
+            Pesada.auto_aprobado, Pesada.peso_neto,
+        ).filter(
+            Pesada.estado == "completado",
+            Pesada.anulada == False,
+            Pesada.fecha_salida >= desde,
+        ).all()
+    finally:
+        db.close()
+
+    por_dia = {
+        (desde + timedelta(days=i)).strftime("%Y-%m-%d"): {"completadas": 0, "minutos": []}
+        for i in range(dias)
+    }
+    por_tipo: dict[str, int] = {}
+    minutos_hoy: list[float] = []
+    completadas_hoy = 0
+    neto_hoy = 0.0
+    auto_aprobadas = 0
+
+    for fecha_entrada, fecha_salida, tipo_pesaje, auto_aprobado, peso_neto in filas:
+        clave = fecha_salida.strftime("%Y-%m-%d")
+        if clave not in por_dia:
+            continue
+
+        por_dia[clave]["completadas"] += 1
+        por_tipo[tipo_pesaje or "—"] = por_tipo.get(tipo_pesaje or "—", 0) + 1
+        if auto_aprobado:
+            auto_aprobadas += 1
+
+        # Sin fecha de entrada (pesadas viejas) no hay tiempo que medir;
+        # contarlas como 0 hundiría el promedio y mentiría.
+        minutos = None
+        if fecha_entrada:
+            minutos = (fecha_salida - fecha_entrada).total_seconds() / 60
+            # Negativo = relojes desfasados entre estaciones; se descarta
+            # en vez de ensuciar el promedio.
+            if minutos >= 0:
+                por_dia[clave]["minutos"].append(minutos)
+            else:
+                minutos = None
+
+        if fecha_salida.date() == hoy:
+            completadas_hoy += 1
+            neto_hoy += float(peso_neto or 0)
+            if minutos is not None:
+                minutos_hoy.append(minutos)
+
+    def promedio(valores: list[float]) -> Optional[float]:
+        return round(sum(valores) / len(valores), 1) if valores else None
+
+    serie_diaria = [
+        {"fecha": fecha, "completadas": datos["completadas"], "minutos_promedio": promedio(datos["minutos"])}
+        for fecha, datos in sorted(por_dia.items())
+    ]
+
+    return {
+        "dias": dias,
+        "generado": ahora,
+        "kpis": {
+            "en_planta": en_planta,
+            "pendientes_aprobacion": pendientes_aprobacion,
+            "completadas_hoy": completadas_hoy,
+            "neto_hoy_kg": round(neto_hoy, 2),
+            "minutos_promedio_hoy": promedio(minutos_hoy),
+            # None y no 0 cuando no hay datos: "no se puede calcular" es
+            # distinto de "Costos revisa el 100% a mano".
+            "porcentaje_auto_aprobadas": round(auto_aprobadas / len(filas) * 100, 1) if filas else None,
+        },
+        "serie_diaria": serie_diaria,
+        "distribucion_tipo": [
+            {"tipo": tipo, "cantidad": cantidad}
+            for tipo, cantidad in sorted(por_tipo.items(), key=lambda par: -par[1])
+        ],
+    }
 
 
 def get_pesada_en_planta_por_vehiculo(vehiculo_id: int) -> Optional[Pesada]:

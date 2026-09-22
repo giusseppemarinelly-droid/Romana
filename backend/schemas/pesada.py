@@ -134,3 +134,34 @@ class EstadisticasOut(BaseModel):
     completadas_hoy: int
     neto_hoy_kg: float
     total_completadas: int
+
+
+# --- Estadísticas de la web de supervisión (solo lectura) ---
+
+class KpisOut(BaseModel):
+    en_planta: int
+    pendientes_aprobacion: int
+    completadas_hoy: int
+    neto_hoy_kg: float
+    # None (y no 0) cuando no hay datos para calcularlos.
+    minutos_promedio_hoy: Optional[float] = None
+    porcentaje_auto_aprobadas: Optional[float] = None
+
+
+class PuntoSerieOut(BaseModel):
+    fecha: str  # YYYY-MM-DD
+    completadas: int
+    minutos_promedio: Optional[float] = None
+
+
+class DistribucionTipoOut(BaseModel):
+    tipo: str
+    cantidad: int
+
+
+class EstadisticasSeriesOut(BaseModel):
+    dias: int
+    generado: datetime
+    kpis: KpisOut
+    serie_diaria: list[PuntoSerieOut]
+    distribucion_tipo: list[DistribucionTipoOut]

@@ -1,0 +1,93 @@
+@import "tailwindcss";
+
+/* Tailwind v4 busca clases en todo lo que no esté en .gitignore, y dist/
+   se versiona a propósito (ver ../.gitattributes) -- sin esto escaneaba el
+   build anterior como si fuera código: +21% de CSS, y cada build dependía
+   del previo. */
+@source not "../dist";
+
+/* Sistema de diseño de la web de supervisión. Escala CERRADA a
+   propósito: se borran los colores, tamaños y radios que trae Tailwind y
+   quedan solo los acordados -- una clase fuera de la lista (bg-gray-800,
+   text-xs, rounded-2xl...) directamente no genera CSS.
+
+   Dos temas:
+   - claro (el principal): la paleta de la app de escritorio, config.py →
+     UI. Si cambia un color allá, cambiarlo acá.
+   - oscuro (opcional, botón en el sidebar): paleta slate definida por el
+     usuario, redefinida más abajo sobre [data-tema="oscuro"].
+   Recharts no lee clases: sus colores están en src/tema.ts, que tiene
+   que coincidir con esto. */
+@theme {
+  --font-*: initial;
+  --font-sans: system-ui, sans-serif;
+
+  --color-*: initial;
+  --color-fondo: #f4f1ec;
+  --color-card: #ffffff;
+  --color-acento: #c1802a;
+  --color-acento-hover: #ae7326; /* #C1802A oscurecido exactamente 10% */
+  --color-exito: #1f7a4d;
+  --color-error: #b42318;
+  --color-advertencia: #b5461f;
+  --color-texto: #211f1d;
+  --color-muted: #5c5750;
+  --color-borde: #d8d3cb;
+  --color-blanco: #ffffff; /* solo texto sobre el acento */
+
+  /* Sidebar: navy de marca, como el de escritorio. */
+  --color-lateral: #1e2b50;
+  --color-lateral-texto: #e8e5de;
+  --color-lateral-muted: #9fb0d6;
+  --color-lateral-hover: #28365c;
+  --color-lateral-borde: #28365c;
+  --color-lateral-activo: #c1802a;
+  --color-lateral-activo-texto: #ffffff;
+
+  --text-*: initial;
+  --text-titulo: 24px;
+  --text-subtitulo: 16px;
+  --text-cuerpo: 14px;
+  --text-kpi: 32px;
+
+  --radius-*: initial;
+  --radius-control: 8px; /* botones, campos, filtros */
+  --radius-card: 12px; /* cards y contenedores principales */
+
+  /* Unidad de espaciado = 8px: p-1 = 8, p-2 = 16, p-3 = 24, p-4 = 32,
+     p-6 = 48. También rige alturas y anchos (h-5 = 40, h-6 = 48,
+     w-30 = 240). Así solo se pueden escribir múltiplos de 8. */
+  --spacing: 8px;
+}
+
+@layer base {
+  :root[data-tema="oscuro"] {
+    --color-fondo: #0f172a;
+    --color-card: #1e293b;
+    --color-acento: #2563eb;
+    --color-acento-hover: #2159d4; /* #2563EB oscurecido exactamente 10% */
+    --color-exito: #10b981;
+    --color-error: #ef4444;
+    --color-advertencia: #f59e0b;
+    --color-texto: #f8fafc;
+    --color-muted: #94a3b8;
+    --color-borde: #334155;
+
+    --color-lateral: #1e293b;
+    --color-lateral-texto: #f8fafc;
+    --color-lateral-muted: #94a3b8;
+    --color-lateral-hover: #334155;
+    --color-lateral-borde: #334155;
+    --color-lateral-activo: #334155;
+    --color-lateral-activo-texto: #f8fafc;
+  }
+
+  body {
+    @apply bg-fondo font-sans text-cuerpo text-texto antialiased;
+  }
+
+  /* Un solo anillo de foco para todo lo que se maneja con teclado. */
+  :focus-visible {
+    @apply outline-2 outline-offset-2 outline-acento;
+  }
+}

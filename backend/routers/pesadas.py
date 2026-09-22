@@ -4,13 +4,13 @@
 from datetime import datetime
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from starlette.concurrency import run_in_threadpool
 
 from backend.deps import get_current_user, requiere_permiso
 from backend.schemas.pesada import (
     PesadaOut, EntradaIn, SalidaIn, RechazoIn, CompletarIn, AnularIn,
-    CorteIn, CorteOut, EstadisticasOut,
+    CorteIn, CorteOut, EstadisticasOut, EstadisticasSeriesOut,
 )
 from backend.ws.manager import manager
 from database.engine import SessionLocal
@@ -137,6 +137,18 @@ async def listar_completadas(limit: int = 100):
 @router.get("/estadisticas", response_model=EstadisticasOut, dependencies=[Depends(get_current_user)])
 async def estadisticas():
     return await run_in_threadpool(pesaje_service.obtener_estadisticas_dashboard)
+
+
+@router.get("/estadisticas/series", response_model=EstadisticasSeriesOut,
+            dependencies=[Depends(get_current_user)])
+async def estadisticas_series(dias: int = Query(14, ge=1, le=90)):
+    """
+    Indicadores y series para la web de supervisión. `dias` acotado a 90:
+    la consulta crece con la ventana pedida, no con el tamaño de la tabla
+    (ver obtener_estadisticas_series), y sin tope alguien podría pedir
+    años de historia de una sola vez.
+    """
+    return await run_in_threadpool(pesaje_service.obtener_estadisticas_series, dias)
 
 
 # reportes_ver (no solo get_current_user): el propio sidebar de la GUI ya

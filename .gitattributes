@@ -1,0 +1,10 @@
+# Web de supervisión compilada (`npm run build` en web/). Se versiona a
+# propósito para que el servidor de planta no necesite Node (decisión
+# 2026-09-22, ver tasks/plan.md). Es un artefacto generado:
+#  - binary: git no convierte finales de línea (core.autocrlf=true en el
+#    git de Windows cambiaría los bytes que sirve el backend) ni intenta
+#    diffs/merges línea a línea -- ante un conflicto, se regenera con
+#    `npm run build` en vez de resolverlo a mano.
+#  - linguist-generated: GitHub lo colapsa en los diffs y no lo cuenta
+#    en las estadísticas de lenguajes del repo.
+web/dist/** binary linguist-generated=true
