@@ -32,6 +32,7 @@
 
 import customtkinter as ctk
 from config import UI
+from gui.components.ui_kit import ocultar_scrollbar
 
 
 class ComboBuscable(ctk.CTkFrame):
@@ -160,6 +161,7 @@ class ComboBuscable(ctk.CTkFrame):
         self._popup.grid_columnconfigure(0, weight=1)
         self._popup.grid_rowconfigure(0, weight=1)
         contenedor.grid_columnconfigure(0, weight=1)
+        ocultar_scrollbar(contenedor)
         # Nota: NO existe contenedor.grid_propagate(False) -- en
         # CTkScrollableFrame ese método está sobreescrito y no acepta el
         # argumento (tira TypeError, que Tkinter se traga en silencio

@@ -219,6 +219,7 @@ class App(ctk.CTk):
             "pesaje_salida":     "↑ Salida / Capturar Peso",
             "completar_pesaje":  "✔ Completar Pesaje",
             "centro_costos":     "📋 Centro de Costos — Aprobaciones",
+            "cc_auto_aprobadas": "🔒 Auto-Aprobadas Recientes",
             "kardex":            "📋 Kardex de Pesadas",
             "corte":             "✂ Corte de Pesadas",
             "vehiculos":         "🚛 Vehículos",
@@ -267,6 +268,10 @@ class App(ctk.CTk):
             elif destino == "centro_costos":
                 from gui.centro_costos.centro_costos_view import CentroCostosView
                 return CentroCostosView(parent, callback_navegar=self.navegar)
+
+            elif destino == "cc_auto_aprobadas":
+                from gui.centro_costos.auto_aprobadas_view import AutoAprobadasView
+                return AutoAprobadasView(parent, callback_navegar=self.navegar)
 
             elif destino == "kardex":
                 from gui.pesaje.kardex_view import KardexView

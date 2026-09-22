@@ -8,7 +8,9 @@ from datetime import datetime
 from client.api_client import api_client, ApiError
 from config import UI
 from gui.async_utils import cargar_en_hilo
-from gui.components.ui_kit import Card, titulo_h1, titulo_h2, texto_ayuda, boton_primario
+from gui.components.ui_kit import (
+    Card, titulo_h1, titulo_h2, texto_ayuda, boton_primario, ocultar_scrollbar,
+)
 
 
 def _fecha_hora(iso_str):
@@ -89,6 +91,7 @@ class CorteView(ctk.CTkFrame):
         self._scroll_cortes.grid(row=1, column=0, sticky="nsew",
                                   padx=10, pady=(0, 10))
         self._scroll_cortes.grid_columnconfigure(0, weight=1)
+        ocultar_scrollbar(self._scroll_cortes)
         right.grid_columnconfigure(0, weight=1)
 
         self._cargar_historial()

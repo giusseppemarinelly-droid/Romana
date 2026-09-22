@@ -7,7 +7,9 @@ from client.api_client import api_client
 from datetime import datetime
 from config import UI
 from gui.async_utils import cargar_en_hilo
-from gui.components.ui_kit import Card, titulo_h1, titulo_h2, texto_ayuda, boton_primario, boton_secundario
+from gui.components.ui_kit import (
+    Card, titulo_h1, titulo_h2, texto_ayuda, boton_primario, boton_secundario, ocultar_scrollbar,
+)
 
 
 def _hora(iso_str):
@@ -74,7 +76,6 @@ class DashboardView(ctk.CTkFrame):
         metricas_def = [
             ("🚛", "Camiones en Planta", UI["color_warning"]),
             ("✅", "Pesadas Hoy",         UI["color_accent"]),
-            ("⚖",  "Neto Hoy (KG)",      UI["color_success"]),
             ("📋", "Total Completadas",   UI["color_brand"]),
         ]
 
@@ -150,7 +151,6 @@ class DashboardView(ctk.CTkFrame):
         valores = [
             str(len(pendientes)),
             str(stats["completadas_hoy"]),
-            f"{stats['neto_hoy_kg']:,.0f}",
             str(stats["total_completadas"]),
         ]
         for lbl, valor in zip(self._lbls_metricas, valores):
@@ -225,6 +225,7 @@ class DashboardView(ctk.CTkFrame):
             frame, fg_color="transparent", height=250
         )
         scroll.pack(fill="both", expand=True, padx=15, pady=5)
+        ocultar_scrollbar(scroll)
 
         if not pendientes:
             ctk.CTkLabel(

@@ -12,7 +12,9 @@ from config import UI
 from client.api_client import api_client, ApiError
 from client.ws_client import WsClient
 from gui.async_utils import cargar_en_hilo
-from gui.components.ui_kit import Card, titulo_h2, boton_primario, boton_secundario, boton_peligro
+from gui.components.ui_kit import (
+    Card, titulo_h2, boton_primario, boton_secundario, boton_peligro, ocultar_scrollbar,
+)
 
 
 def _fecha_hora(iso_str):
@@ -38,7 +40,6 @@ class CentroCostosView(ctk.CTkFrame):
         self._pesada_seleccionada = None
         self._construir()
         self._cargar_cola()
-        self._cargar_auto_aprobadas()
 
         # Refresco automático en tiempo real: reemplaza al botón manual
         # "↻ Actualizar" como única forma de enterarse de pesadas nuevas.
@@ -46,7 +47,7 @@ class CentroCostosView(ctk.CTkFrame):
             token=api_client.token,
             widget=self,
             on_evento=self._on_evento_ws,
-            on_reconectar=self._on_reconectar_ws,  # resincroniza tras una caída de red
+            on_reconectar=self._cargar_cola,  # resincroniza tras una caída de red
         )
         self._ws.iniciar()
         self.bind("<Destroy>", self._on_destroy)
@@ -55,30 +56,24 @@ class CentroCostosView(ctk.CTkFrame):
         if event.widget is self:
             self._ws.detener()
 
-    def _on_reconectar_ws(self):
-        self._cargar_cola()
-        self._cargar_auto_aprobadas()
-
     def _on_evento_ws(self, evento: dict):
-        tipo = evento.get("tipo")
-        if tipo == "pesada_pendiente_aprobacion":
+        if evento.get("tipo") == "pesada_pendiente_aprobacion":
             self._cargar_cola()
-        elif tipo == "pesada_auto_aprobada":
-            self._cargar_auto_aprobadas()
 
     # ----------------------------------------------------------
     def _construir(self):
         # minsize para que el panel derecho no quede apachurrado contra el
         # borde en monitores de menor resolución (mismo fix que
-        # pesaje_entrada_view.py / pesaje_salida_view.py).
+        # pesaje_entrada_view.py / pesaje_salida_view.py). Las
+        # auto-aprobadas (solo lectura) se separaron a su propia
+        # pantalla (gui/centro_costos/auto_aprobadas_view.py) -- esta
+        # pantalla ahora es solo cola + detalle, a pantalla completa.
         self.grid_columnconfigure(0, weight=3, minsize=420)
         self.grid_columnconfigure(1, weight=2, minsize=260)
-        self.grid_rowconfigure(0, weight=3)
-        self.grid_rowconfigure(1, weight=1, minsize=180)
+        self.grid_rowconfigure(0, weight=1)
 
         self._construir_lista()
         self._construir_panel_detalle()
-        self._construir_panel_auto_aprobadas()
 
     # ----------------------------------------------------------
     def _construir_lista(self):
@@ -170,6 +165,7 @@ class CentroCostosView(ctk.CTkFrame):
         self._panel.grid(row=0, column=1, sticky="nsew",
                           padx=(8, 20), pady=20)
         self._panel.grid_columnconfigure(0, weight=1)
+        self._panel.grid_rowconfigure(0, weight=1)
 
         self._lbl_placeholder = ctk.CTkLabel(
             self._panel,
@@ -180,78 +176,13 @@ class CentroCostosView(ctk.CTkFrame):
         )
         self._lbl_placeholder.grid(row=0, column=0, padx=20, pady=60)
 
-        self._detalle_frame = ctk.CTkFrame(self._panel, fg_color="transparent")
-
-    # ----------------------------------------------------------
-    def _construir_panel_auto_aprobadas(self):
-        """
-        Panel de solo lectura (sin Aprobar/Rechazar): pesadas que se
-        aprobaron solas por tener la diferencia peso_guía/peso_neto
-        dentro de tolerancia. CC no decide nada acá, pero la info le
-        tiene que llegar igual.
-        """
-        frame = Card(self)
-        frame.grid(row=1, column=0, columnspan=2, sticky="nsew",
-                   padx=20, pady=(8, 20))
-        frame.grid_rowconfigure(1, weight=1)
-        frame.grid_columnconfigure(0, weight=1)
-
-        header_row = ctk.CTkFrame(frame, fg_color="transparent")
-        header_row.grid(row=0, column=0, columnspan=2, sticky="ew",
-                         padx=16, pady=(12, 4))
-        header_row.grid_columnconfigure(0, weight=1)
-
-        ctk.CTkLabel(
-            header_row,
-            text="🔒  AUTO-APROBADAS RECIENTES — solo lectura, dentro de tolerancia",
-            font=ctk.CTkFont(family=UI["fuente"], size=12, weight="bold"),
-            text_color=UI["color_success"]
-        ).grid(row=0, column=0, sticky="w")
-
-        self._lbl_count_auto = ctk.CTkLabel(
-            header_row, text="0 pesada(s)",
-            font=ctk.CTkFont(family=UI["fuente"], size=11),
-            text_color=UI["color_muted"]
-        )
-        self._lbl_count_auto.grid(row=0, column=1, sticky="e")
-
-        style = ttk.Style()
-        style.configure("CCAuto.Treeview",
-            background=UI["color_card"],
-            foreground=UI["color_text"],
-            fieldbackground=UI["color_input_bg"],
-            rowheight=28,
-            font=("Segoe UI", 10)
-        )
-        style.configure("CCAuto.Treeview.Heading",
-            background=UI["color_bg"],
-            foreground=UI["color_success"],
-            font=("Segoe UI", 9, "bold")
-        )
-
-        cols = ("ticket", "placa", "fecha", "codigo_viaje", "peso_guia",
-                "neto", "diferencia", "bultos")
-        self._tree_auto = ttk.Treeview(frame, columns=cols, show="headings",
-                                        style="CCAuto.Treeview", selectmode="none")
-
-        configs = [
-            ("ticket",       "TICKET",         90),
-            ("placa",        "PLACA",          80),
-            ("fecha",        "FECHA",         110),
-            ("codigo_viaje", "COD. VIAJE",    100),
-            ("peso_guia",    "PESO GUÍA",      90),
-            ("neto",         "NETO KG",        90),
-            ("diferencia",   "DIF. %",         70),
-            ("bultos",       "BULTOS",         70),
-        ]
-        for col, titulo, ancho in configs:
-            self._tree_auto.heading(col, text=titulo)
-            self._tree_auto.column(col, width=ancho, minwidth=50)
-
-        scroll = ttk.Scrollbar(frame, orient="vertical", command=self._tree_auto.yview)
-        self._tree_auto.configure(yscrollcommand=scroll.set)
-        self._tree_auto.grid(row=1, column=0, sticky="nsew", padx=(10, 0), pady=(0, 10))
-        scroll.grid(row=1, column=1, sticky="ns", pady=(0, 10))
+        # Scrollable -- el detalle (datos de guía incluidos) puede superar
+        # la altura disponible en monitores más chicos; sin esto, los
+        # botones APROBAR/RECHAZAR quedaban directamente inalcanzables,
+        # cortados por el borde de la ventana sin ningún aviso (mismo
+        # síntoma que el fix de pesaje_entrada_view.py, ver CLAUDE.md).
+        self._detalle_frame = ctk.CTkScrollableFrame(self._panel, fg_color="transparent")
+        ocultar_scrollbar(self._detalle_frame)
 
     # ----------------------------------------------------------
     def _cargar_cola(self):
@@ -286,35 +217,6 @@ class CentroCostosView(ctk.CTkFrame):
         )
         self._pesada_seleccionada = None
         self._limpiar_detalle()
-
-    # ----------------------------------------------------------
-    def _cargar_auto_aprobadas(self):
-        cargar_en_hilo(
-            self, api_client.listar_auto_aprobadas,
-            on_exito=self._poblar_auto_aprobadas,
-            on_error=lambda e: messagebox.showerror("Error de conexión", str(e)),
-        )
-
-    def _poblar_auto_aprobadas(self, pesadas):
-        for item in self._tree_auto.get_children():
-            self._tree_auto.delete(item)
-
-        for p in pesadas:
-            neto = float(p["peso_neto"] or 0)
-            peso_guia = float(p["peso_guia"] or 0)
-            diferencia = abs(neto - peso_guia) / peso_guia * 100 if peso_guia else 0
-            self._tree_auto.insert("", "end", iid=str(p["id"]), values=(
-                p["numero_ticket"],
-                p["vehiculo"]["placa"] if p["vehiculo"] else "—",
-                _fecha_hora(p["fecha_captura"]),
-                p["codigo_viaje"] or "—",
-                f"{peso_guia:,.0f}",
-                f"{neto:,.0f}",
-                f"{diferencia:,.2f}",
-                p["bultos"] if p["bultos"] is not None else "—",
-            ))
-
-        self._lbl_count_auto.configure(text=f"{len(pesadas)} pesada(s)")
 
     # ----------------------------------------------------------
     def _on_seleccion(self, event):

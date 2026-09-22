@@ -11,7 +11,9 @@ from config import UI, REPORTS_DIR
 from client.api_client import api_client, ApiError
 from hardware.display_manager import leer_peso_actual, es_peso_estable
 from gui.async_utils import cargar_en_hilo
-from gui.components.ui_kit import Card, boton_primario, boton_secundario, titulo_h2, etiqueta_campo
+from gui.components.ui_kit import (
+    Card, boton_primario, boton_secundario, titulo_h2, etiqueta_campo, ocultar_scrollbar,
+)
 import os
 
 
@@ -216,6 +218,7 @@ class CompletarPesajeView(ctk.CTkFrame):
         # borde de la ventana (mismo fix que pesaje_entrada_view.py).
         self._form_frame = ctk.CTkScrollableFrame(
             self._panel, fg_color="transparent", label_text="")
+        ocultar_scrollbar(self._form_frame)
 
     # ----------------------------------------------------------
     def _cargar_lista(self):

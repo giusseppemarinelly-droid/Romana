@@ -98,8 +98,13 @@ PERMISOS = {
 
     # --- Maestros ---
     "maestros_ver":         [1, 2, 3],      # Romana ve los maestros
-    "maestros_crear":       [1, 2],         # Admin y supervisor crean
-    "maestros_editar":      [1, 2],         # Admin y supervisor editan
+    "maestros_crear":       [1, 2, 3],      # Romana también da de alta vehículo/conductor/
+                                            # proveedor nuevo en el momento -- es quien tiene
+                                            # el dato en frente al entrar el camión, no tiene
+                                            # sentido frenarlo a esperar a Admin/Supervisor
+    "maestros_editar":      [1, 2],         # Editar/corregir datos existentes sigue
+                                            # reservado -- evita que un alta rápida termine
+                                            # pisando datos ya cargados por error
     "maestros_eliminar":    [1],            # Solo admin elimina
 
     # --- Reportes ---

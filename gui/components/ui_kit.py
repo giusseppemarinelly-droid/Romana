@@ -15,6 +15,31 @@ import customtkinter as ctk
 from config import UI
 
 
+def ocultar_scrollbar(scrollable_frame: ctk.CTkScrollableFrame):
+    """
+    Saca la barra de scroll visible de un CTkScrollableFrame sin
+    perder el scroll en sí -- el mouse wheel sigue funcionando porque
+    CTkScrollableFrame lo ata con bind_all() a nivel de aplicación, no
+    al widget de la barra (ver customtkinter/windows/widgets/
+    ctk_scrollable_frame.py, _mouse_wheel_all). Hallazgo de sesión
+    (2026-09-16): esa barra angosta se sumaba al mismo bug de redibujado
+    en negro de CTkScrollableFrame sobre Windows que ya veníamos viendo
+    en el sidebar -- sacarla reduce la superficie de canvases que
+    CustomTkinter tiene que repintar.
+
+    Usa el atributo interno _scrollbar (no hay API pública para esto en
+    customtkinter 5.2.2) -- se llama una sola vez, justo después de
+    construir el frame: _create_grid() solo lo posiciona una vez en
+    __init__, nada más adelante lo vuelve a gridear, así que
+    grid_remove() queda firme para toda la vida del widget.
+    """
+    try:
+        scrollable_frame._scrollbar.grid_remove()
+    except Exception:
+        pass
+    return scrollable_frame
+
+
 def _fuente(nivel: str, weight: str = "normal") -> ctk.CTkFont:
     """Fuente de la escala tipográfica del sistema (ver design-system.md)."""
     tamaños = {

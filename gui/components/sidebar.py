@@ -6,6 +6,7 @@ import customtkinter as ctk
 from client.api_client import api_client
 from config import UI
 from gui.components.icons import icono
+from gui.components.ui_kit import ocultar_scrollbar
 
 # Íconos propios (gui/components/icons.py) en vez de emoji -- se veían
 # inconsistentes entre sí (cada uno con su propio estilo/color de fuente
@@ -31,6 +32,7 @@ class Sidebar(ctk.CTkFrame):
         # --- Sección Centro de Costos ---
         ("separator", "CENTRO DE COSTOS", None),
         ("Aprobaciones",     "centro_costos",     "centro_costos",   "aprobaciones"),
+        ("Auto-Aprobadas",   "cc_auto_aprobadas", "centro_costos",   "candado"),
 
         # --- Sección maestros ---
         ("separator", "MAESTROS", None),
@@ -103,6 +105,7 @@ class Sidebar(ctk.CTkFrame):
             scrollbar_button_hover_color=UI["color_accent"]
         )
         scroll.grid(row=1, column=0, sticky="nsew", padx=0, pady=0)
+        ocultar_scrollbar(scroll)
         scroll.grid_columnconfigure(0, weight=1)
 
         # Dashboard (siempre visible)

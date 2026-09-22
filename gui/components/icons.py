@@ -187,6 +187,19 @@ def _configuracion(d, hi, c, g):
     d.ellipse([cx - r_int, cy - r_int, cx + r_int, cy + r_int], outline=c, width=g)
 
 
+def _candado(d, hi, c, g):
+    """Candado -- para paneles de solo lectura (auto-aprobadas)."""
+    m = _margen(hi, 0.20)
+    cuerpo_y0 = hi * 0.46
+    d.rounded_rectangle([m, cuerpo_y0, hi - m, hi - m * 0.6], radius=hi * 0.06, outline=c, width=g)
+    cx = hi / 2
+    r = hi * 0.20
+    d.arc([cx - r, hi * 0.14, cx + r, hi * 0.14 + 2 * r], start=180, end=360, fill=c, width=g)
+    r2 = hi * 0.045
+    cy = (cuerpo_y0 + hi - m * 0.6) / 2
+    d.ellipse([cx - r2, cy - r2, cx + r2, cy + r2], outline=c, width=g)
+
+
 def _balanza(d, hi, c, g):
     """Logo de la app -- una balanza/romana simple, reemplaza el emoji ⚖."""
     cx = hi / 2
@@ -216,4 +229,5 @@ _ICONOS = {
     "usuarios": _usuarios,
     "configuracion": _configuracion,
     "balanza": _balanza,
+    "candado": _candado,
 }

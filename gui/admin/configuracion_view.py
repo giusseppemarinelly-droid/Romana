@@ -7,7 +7,9 @@ from tkinter import messagebox
 from client.api_client import api_client, ApiError
 from config import EMPRESA, UI
 from gui.async_utils import cargar_en_hilo
-from gui.components.ui_kit import Card, titulo_h2, etiqueta_campo, boton_primario
+from gui.components.ui_kit import (
+    Card, titulo_h2, etiqueta_campo, boton_primario, ocultar_scrollbar,
+)
 
 
 class ConfiguracionView(ctk.CTkFrame):
@@ -32,6 +34,7 @@ class ConfiguracionView(ctk.CTkFrame):
         scroll.grid(row=0, column=0, sticky="nsew", padx=20, pady=20)
         scroll.grid_columnconfigure(0, weight=1)
         scroll.grid_columnconfigure(1, weight=1)
+        ocultar_scrollbar(scroll)
 
         # ---- Sección: Datos de la empresa ----
         self._seccion(scroll, "🏢 Datos de la Empresa", row=0, col=0)

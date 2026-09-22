@@ -154,14 +154,13 @@ def _autoregistrar_vehiculo_sync(body: VehiculoIn) -> Vehiculo:
 )
 async def autoregistrar_vehiculo(body: VehiculoIn):
     """
-    Registro rápido de un vehículo no catalogado al momento de pesar.
-
-    A diferencia de POST /vehiculos (requiere "maestros_crear", solo
-    niveles 1-2), esto lo puede hacer cualquiera con permiso de
-    "pesaje_entrada" (niveles 1-3) — es exactamente el caso de uso que
-    tenía la GUI antes de la migración: el operador de Romana no puede
-    quedar bloqueado esperando a un supervisor solo porque un camión
-    todavía no está en el catálogo de vehículos.
+    Registro rápido de un vehículo no catalogado al momento de pesar,
+    sin pasar por Maestros → Vehículos -- para cuando el operador está
+    parado frente a la báscula y no tiene sentido mandarlo a otra
+    pantalla a mitad de un pesaje. "maestros_crear" (niveles 1-2-3
+    desde que Romana también da de alta maestros) ya alcanzaría por
+    permiso, pero este endpoint queda igual: es el único que además
+    resuelve el flujo completo de "pesaje_entrada" en un solo paso.
     """
     return await run_in_threadpool(_autoregistrar_vehiculo_sync, body)
 

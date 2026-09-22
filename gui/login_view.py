@@ -135,17 +135,20 @@ class LoginView(ctk.CTkFrame):
         card.grid(row=0, column=0, padx=50, pady=50, sticky="nsew")
         card.grid_columnconfigure(0, weight=1)
 
-        # Franja azul superior en la card
+        # Franja de acento superior -- separada de las esquinas
+        # redondeadas de la card (antes iba de borde a borde con
+        # esquinas cuadradas y un segundo parche encima intentando
+        # tapar el hueco que dejaba contra el corner_radius de la
+        # card; el parche nunca calzaba bien y se veía como una
+        # mancha suelta en la esquina). Con margen a los costados
+        # queda adentro del área redondeada, sin pelearse con ella.
         stripe = ctk.CTkFrame(card, fg_color=UI["color_accent"],
-                               height=6, corner_radius=0)
-        stripe.grid(row=0, column=0, sticky="ew")
-        # Fix corners del top
-        ctk.CTkFrame(card, fg_color=UI["color_accent"],
-                     height=6, width=16).place(x=0, y=0)
+                               height=4, corner_radius=2)
+        stripe.grid(row=0, column=0, sticky="ew", padx=24, pady=(20, 0))
 
         # Encabezado
         titulo_h1(card, "Acceso al Sistema").grid(
-            row=1, column=0, padx=40, pady=(30, 4), sticky="w")
+            row=1, column=0, padx=40, pady=(20, 4), sticky="w")
 
         texto_ayuda(card, "Ingrese sus credenciales para continuar").grid(
             row=2, column=0, padx=40, pady=(0, 24), sticky="w")

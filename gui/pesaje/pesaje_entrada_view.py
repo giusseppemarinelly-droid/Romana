@@ -9,9 +9,11 @@ from client.api_client import api_client, ApiError
 from hardware.display_manager import leer_peso_actual, es_peso_estable
 from gui.async_utils import cargar_en_hilo
 from gui.components.combo_buscable import ComboBuscable
+from gui.components.dialogo_alta_rapida import DialogoAltaRapida
+from gui.components.dialogo_seleccion import DialogoSeleccion
 from gui.components.ui_kit import (
     Card, PesoDisplay, boton_primario, boton_secundario,
-    titulo_h1, titulo_h2, etiqueta_campo, texto_ayuda,
+    titulo_h1, titulo_h2, etiqueta_campo, texto_ayuda, ocultar_scrollbar,
 )
 
 
@@ -111,6 +113,7 @@ class PesajeEntradaView(ctk.CTkFrame):
         card = ctk.CTkScrollableFrame(card_outer, fg_color="transparent",
                                        label_text="")
         card.grid(row=0, column=0, sticky="nsew")
+        ocultar_scrollbar(card)
         card.grid_columnconfigure((0, 1), weight=1)
 
         row = 0
@@ -118,7 +121,9 @@ class PesajeEntradaView(ctk.CTkFrame):
         # ── Tipo de pesaje ────────────────────────────────────
         self._seccion(card, "TIPO DE PESAJE", row); row += 1
 
-        self._tipo_var = ctk.StringVar(value="PESAJE GENERAL")
+        # Producto Terminado por defecto -- es el tipo de pesaje más usado
+        # en la práctica, pedido explícitamente por el usuario.
+        self._tipo_var = ctk.StringVar(value="PRODUCTO TERMINADO")
         tipo_frame = ctk.CTkFrame(card, fg_color="transparent")
         tipo_frame.grid(row=row, column=0, columnspan=2, sticky="ew",
                         padx=18, pady=(4, 10))
@@ -177,14 +182,18 @@ class PesajeEntradaView(ctk.CTkFrame):
                         padx=18, pady=(4, 10))
         veh_frame.grid_columnconfigure(0, weight=1)
 
-        self._combo_vehiculo = ComboBuscable(
-            veh_frame,
-            command=self._on_vehiculo_changed,
-            height=40,
-            font=ctk.CTkFont(family=UI["fuente"], size=13),
-            placeholder_text="Escriba para buscar o ingrese la placa...",
+        # Entry simple, no ComboBuscable -- pedido explícito del usuario
+        # (2026-09-17): separar "escribo la placa y confirmo con
+        # Buscar" de "no sé la placa, quiero ver la lista completa"
+        # (Buscar con el campo vacío abre DialogoSeleccion). El filtro
+        # en vivo mientras se escribía se sentía ruidoso.
+        self._entry_vehiculo = ctk.CTkEntry(
+            veh_frame, placeholder_text="Ingrese la placa...",
+            height=40, font=ctk.CTkFont(family=UI["fuente"], size=13),
+            **_INPUT_STYLE,
         )
-        self._combo_vehiculo.grid(row=0, column=0, sticky="ew", padx=(0, 8))
+        self._entry_vehiculo.grid(row=0, column=0, sticky="ew", padx=(0, 8))
+        self._entry_vehiculo.bind("<Return>", lambda e: self._buscar_vehiculo())
 
         boton_secundario(
             veh_frame, "🔍 Buscar", command=self._buscar_vehiculo, width=96,
@@ -347,8 +356,8 @@ class PesajeEntradaView(ctk.CTkFrame):
                                       sticky="ew", padx=18, pady=(4, 18))
         row += 1
 
-        # Cargar productos por defecto (GENERAL)
-        self._cargar_productos("GENERAL")
+        # Cargar productos por defecto (PRODUCTO_TERMINADO, ver _tipo_var)
+        self._cargar_productos("PRODUCTO_TERMINADO")
 
     # ----------------------------------------------------------
     def _construir_panel_peso(self, parent):
@@ -443,8 +452,6 @@ class PesajeEntradaView(ctk.CTkFrame):
 
     def _on_vehiculos_cargados(self, vehiculos):
         self._vehiculos_map = {v["placa"]: v for v in vehiculos}
-        self._combo_vehiculo.configure(values=[v["placa"] for v in vehiculos])
-        self._combo_vehiculo.set("")
 
     # ----------------------------------------------------------
     def _cargar_productos(self, tipo: str):
@@ -488,39 +495,94 @@ class PesajeEntradaView(ctk.CTkFrame):
         self._lbl_resumen_prod.configure(text=f"Producto: {nombre}")
 
     # ----------------------------------------------------------
-    def _on_vehiculo_changed(self, seleccion):
-        if not seleccion:
-            self._vehiculo_seleccionado = None
-            self._lbl_vehiculo_info.configure(text="")
-            self._lbl_resumen_veh.configure(text="Vehículo: —")
-            return
-        v = self._vehiculos_map.get(seleccion)
-        if v:
-            self._vehiculo_seleccionado = v
-            tara = f"{float(v['tara_registrada']):,.0f}" if v["tara_registrada"] else "N/A"
-            self._lbl_vehiculo_info.configure(
-                text=f"{v['descripcion'] or ''}  |  Tara registrada: {tara} KG"
-            )
-            self._lbl_resumen_veh.configure(text=f"Vehículo: {seleccion}")
+    def _seleccionar_vehiculo(self, v):
+        """Deja un vehículo (dict) como seleccionado y refleja los datos
+        en pantalla -- común a "encontrado buscando", "elegido del
+        DialogoSeleccion" y "recién creado en DialogoAltaRapida"."""
+        self._entry_vehiculo.delete(0, "end")
+        self._entry_vehiculo.insert(0, v["placa"])
+        self._vehiculo_seleccionado = v
+        tara = f"{float(v['tara_registrada']):,.0f}" if v["tara_registrada"] else "N/A"
+        self._lbl_vehiculo_info.configure(
+            text=f"{v['descripcion'] or ''}  |  Tara registrada: {tara} KG"
+        )
+        self._lbl_resumen_veh.configure(text=f"Vehículo: {v['placa']}")
+        self._autocompletar_proveedor_de_vehiculo(v)
 
     # ----------------------------------------------------------
     def _buscar_vehiculo(self):
-        placa = self._combo_vehiculo.get().strip().upper()
+        placa = self._entry_vehiculo.get().strip().upper()
+
         if not placa:
-            messagebox.showwarning("Buscar", "Ingrese o seleccione una placa")
+            # Campo vacío -- en vez de solo avisar, mostrar directamente
+            # el listado completo con su propio filtro (pedido explícito
+            # del usuario: separar "escribo y confirmo" de "no sé,
+            # quiero ver todo").
+            if not self._vehiculos_map:
+                messagebox.showinfo("Sin datos", "Todavía no terminó de cargar el catálogo de vehículos.")
+                return
+            items = [
+                (f"{v['placa']} — {v['descripcion'] or 'sin descripción'}", v)
+                for v in sorted(self._vehiculos_map.values(), key=lambda v: v["placa"])
+            ]
+            DialogoSeleccion(
+                self, titulo="Seleccionar Vehículo",
+                items=items, on_elegido=self._seleccionar_vehiculo,
+            )
             return
+
         v = self._vehiculos_map.get(placa)
         if v:
-            self._vehiculo_seleccionado = v
-            tara = f"{float(v['tara_registrada']):,.0f}" if v["tara_registrada"] else "N/A"
-            self._lbl_vehiculo_info.configure(
-                text=f"{v['descripcion'] or ''}  |  Tara: {tara} KG"
-            )
-            self._lbl_resumen_veh.configure(text=f"Vehículo: {v['placa']}")
+            self._seleccionar_vehiculo(v)
         else:
-            messagebox.showinfo("No encontrado",
-                f"Placa '{placa}' no está registrada.\n"
-                "Puede continuar con esta placa o registrarla primero en Maestros → Vehículos.")
+            if messagebox.askyesno("Vehículo no registrado",
+                f"La placa '{placa}' no está en el catálogo.\n\n"
+                "¿Desea registrarla ahora? (alta rápida, sin salir de esta pantalla)"):
+                DialogoAltaRapida(
+                    self, titulo="Nuevo Vehículo", recurso="vehiculos",
+                    campos=[("placa", "Placa", True), ("descripcion", "Descripción", False)],
+                    valores_iniciales={"placa": placa},
+                    on_creado=self._on_vehiculo_creado,
+                )
+
+    def _on_vehiculo_creado(self, vehiculo):
+        """Callback de DialogoAltaRapida -- deja el vehículo recién creado
+        seleccionado, exactamente como si lo hubiera encontrado buscando."""
+        self._vehiculos_map[vehiculo["placa"]] = vehiculo
+        self._seleccionar_vehiculo(vehiculo)
+
+    # ----------------------------------------------------------
+    def _autocompletar_proveedor_de_vehiculo(self, vehiculo):
+        """
+        Si el vehículo tiene un proveedor asociado (Vehiculo.proveedor_id,
+        cargado desde Maestros → Vehículos) lo autocompleta acá -- la
+        mayoría de los vehículos siempre cargan/entregan para el mismo
+        proveedor, así se ahorra buscarlo a mano cada vez que se repite
+        la placa. No pisa nada que el operador ya haya escrito o
+        buscado antes de elegir el vehículo (a mano o de una pesada
+        anterior en la misma sesión de formulario).
+        """
+        proveedor_id = vehiculo.get("proveedor_id")
+        if not proveedor_id or self._entry_cod_proveedor.get().strip():
+            return
+        cargar_en_hilo(
+            self, lambda: api_client.obtener_maestro("proveedores", proveedor_id),
+            on_exito=self._on_proveedor_de_vehiculo_cargado,
+            on_error=lambda e: None,  # no molestar con un error acá -- el operador puede seguir a mano
+        )
+
+    def _on_proveedor_de_vehiculo_cargado(self, proveedor):
+        if self._entry_cod_proveedor.get().strip():
+            return  # el operador ya escribió/buscó algo mientras esto cargaba
+        self._proveedor_seleccionado = proveedor
+        self._entry_cod_proveedor.delete(0, "end")
+        self._entry_cod_proveedor.insert(0, proveedor["codigo"])
+        self._entry_empresa_cp.delete(0, "end")
+        self._entry_empresa_cp.insert(0, proveedor["nombre"])
+        self._lbl_proveedor_info.configure(
+            text=f"✓ Autocompletado del vehículo  |  {proveedor.get('telefono') or 'sin teléfono'}",
+            text_color=UI["color_success"]
+        )
 
     # ----------------------------------------------------------
     def _buscar_conductor(self):
@@ -532,8 +594,15 @@ class PesajeEntradaView(ctk.CTkFrame):
         como texto libre (cedula_conductor_libre), igual que antes.
         """
         cedula = self._entry_cedula.get().strip()
+
         if not cedula:
-            messagebox.showwarning("Buscar", "Ingrese la cédula o documento del conductor")
+            # Campo vacío -- mismo criterio que Vehículo: mostrar el
+            # listado completo con filtro propio, no solo un aviso.
+            cargar_en_hilo(
+                self, lambda: api_client.listar_maestro("conductores"),
+                on_exito=self._abrir_selector_conductor,
+                on_error=lambda e: messagebox.showerror("Error de conexión", str(e)),
+            )
             return
 
         self._conductor_seleccionado = None
@@ -551,18 +620,52 @@ class PesajeEntradaView(ctk.CTkFrame):
         )
 
         if c:
-            self._conductor_seleccionado = c
-            self._entry_nombre_conductor.delete(0, "end")
-            self._entry_nombre_conductor.insert(0, c["nombre"])
-            self._lbl_conductor_info.configure(
-                text=f"✓ Conductor registrado  |  {c.get('telefono') or 'sin teléfono'}",
-                text_color=UI["color_success"]
-            )
+            self._seleccionar_conductor(c)
         else:
             self._lbl_conductor_info.configure(
                 text="Conductor no registrado — se guardará solo con la cédula ingresada.",
                 text_color=UI["color_muted"]
             )
+            if messagebox.askyesno("Conductor no registrado",
+                f"La cédula '{cedula}' no está en el catálogo.\n\n"
+                "¿Desea registrarlo ahora? (alta rápida, sin salir de esta pantalla)"):
+                DialogoAltaRapida(
+                    self, titulo="Nuevo Conductor", recurso="conductores",
+                    campos=[
+                        ("documento", "Cédula / Documento", True),
+                        ("nombre", "Nombre completo", True),
+                        ("telefono", "Teléfono", False),
+                    ],
+                    valores_iniciales={
+                        "documento": cedula,
+                        "nombre": self._entry_nombre_conductor.get().strip(),
+                    },
+                    on_creado=self._seleccionar_conductor,
+                )
+
+    def _abrir_selector_conductor(self, conductores):
+        if not conductores:
+            messagebox.showinfo("Sin datos", "Todavía no hay conductores registrados.")
+            return
+        items = [
+            (f"{c['documento']} — {c['nombre']}", c)
+            for c in sorted(conductores, key=lambda c: c["nombre"])
+        ]
+        DialogoSeleccion(
+            self, titulo="Seleccionar Conductor",
+            items=items, on_elegido=self._seleccionar_conductor,
+        )
+
+    def _seleccionar_conductor(self, conductor):
+        self._conductor_seleccionado = conductor
+        self._entry_cedula.delete(0, "end")
+        self._entry_cedula.insert(0, conductor["documento"])
+        self._entry_nombre_conductor.delete(0, "end")
+        self._entry_nombre_conductor.insert(0, conductor["nombre"])
+        self._lbl_conductor_info.configure(
+            text=f"✓ Conductor registrado  |  {conductor.get('telefono') or 'sin teléfono'}",
+            text_color=UI["color_success"]
+        )
 
     # ----------------------------------------------------------
     def _buscar_transportista(self):
@@ -574,8 +677,13 @@ class PesajeEntradaView(ctk.CTkFrame):
         (empresa_transportista).
         """
         codigo = self._entry_cod_transportista.get().strip()
+
         if not codigo:
-            messagebox.showwarning("Buscar", "Ingrese el código de la empresa transportista")
+            cargar_en_hilo(
+                self, lambda: api_client.listar_maestro("empresas_transportistas"),
+                on_exito=self._abrir_selector_transportista,
+                on_error=lambda e: messagebox.showerror("Error de conexión", str(e)),
+            )
             return
 
         self._transportista_seleccionada = None
@@ -593,18 +701,52 @@ class PesajeEntradaView(ctk.CTkFrame):
         )
 
         if t:
-            self._transportista_seleccionada = t
-            self._entry_transportista.delete(0, "end")
-            self._entry_transportista.insert(0, t["nombre"])
-            self._lbl_transportista_info.configure(
-                text=f"✓ Empresa registrada  |  {t.get('telefono') or 'sin teléfono'}",
-                text_color=UI["color_success"]
-            )
+            self._seleccionar_transportista(t)
         else:
             self._lbl_transportista_info.configure(
                 text="No registrada — se guardará solo con el nombre ingresado.",
                 text_color=UI["color_muted"]
             )
+            if messagebox.askyesno("Empresa transportista no registrada",
+                f"El código '{codigo}' no está en el catálogo.\n\n"
+                "¿Desea registrarla ahora? (alta rápida, sin salir de esta pantalla)"):
+                DialogoAltaRapida(
+                    self, titulo="Nueva Empresa Transportista", recurso="empresas_transportistas",
+                    campos=[
+                        ("codigo", "Código", True),
+                        ("nombre", "Nombre", True),
+                        ("telefono", "Teléfono", False),
+                    ],
+                    valores_iniciales={
+                        "codigo": codigo,
+                        "nombre": self._entry_transportista.get().strip(),
+                    },
+                    on_creado=self._seleccionar_transportista,
+                )
+
+    def _abrir_selector_transportista(self, transportistas):
+        if not transportistas:
+            messagebox.showinfo("Sin datos", "Todavía no hay empresas transportistas registradas.")
+            return
+        items = [
+            (f"{t['codigo']} — {t['nombre']}", t)
+            for t in sorted(transportistas, key=lambda t: t["nombre"])
+        ]
+        DialogoSeleccion(
+            self, titulo="Seleccionar Empresa Transportista",
+            items=items, on_elegido=self._seleccionar_transportista,
+        )
+
+    def _seleccionar_transportista(self, transportista):
+        self._transportista_seleccionada = transportista
+        self._entry_cod_transportista.delete(0, "end")
+        self._entry_cod_transportista.insert(0, transportista["codigo"])
+        self._entry_transportista.delete(0, "end")
+        self._entry_transportista.insert(0, transportista["nombre"])
+        self._lbl_transportista_info.configure(
+            text=f"✓ Empresa registrada  |  {transportista.get('telefono') or 'sin teléfono'}",
+            text_color=UI["color_success"]
+        )
 
     # ----------------------------------------------------------
     def _buscar_proveedor(self):
@@ -616,8 +758,13 @@ class PesajeEntradaView(ctk.CTkFrame):
         (empresa_cliente_proveedor).
         """
         codigo = self._entry_cod_proveedor.get().strip()
+
         if not codigo:
-            messagebox.showwarning("Buscar", "Ingrese el código del cliente o proveedor")
+            cargar_en_hilo(
+                self, lambda: api_client.listar_maestro("proveedores"),
+                on_exito=self._abrir_selector_proveedor,
+                on_error=lambda e: messagebox.showerror("Error de conexión", str(e)),
+            )
             return
 
         self._proveedor_seleccionado = None
@@ -635,18 +782,52 @@ class PesajeEntradaView(ctk.CTkFrame):
         )
 
         if p:
-            self._proveedor_seleccionado = p
-            self._entry_empresa_cp.delete(0, "end")
-            self._entry_empresa_cp.insert(0, p["nombre"])
-            self._lbl_proveedor_info.configure(
-                text=f"✓ Proveedor registrado  |  {p.get('telefono') or 'sin teléfono'}",
-                text_color=UI["color_success"]
-            )
+            self._seleccionar_proveedor(p)
         else:
             self._lbl_proveedor_info.configure(
                 text="No registrado — se guardará solo con el nombre ingresado.",
                 text_color=UI["color_muted"]
             )
+            if messagebox.askyesno("Cliente/Proveedor no registrado",
+                f"El código '{codigo}' no está en el catálogo.\n\n"
+                "¿Desea registrarlo ahora? (alta rápida, sin salir de esta pantalla)"):
+                DialogoAltaRapida(
+                    self, titulo="Nuevo Cliente/Proveedor", recurso="proveedores",
+                    campos=[
+                        ("codigo", "Código", True),
+                        ("nombre", "Nombre", True),
+                        ("telefono", "Teléfono", False),
+                    ],
+                    valores_iniciales={
+                        "codigo": codigo,
+                        "nombre": self._entry_empresa_cp.get().strip(),
+                    },
+                    on_creado=self._seleccionar_proveedor,
+                )
+
+    def _abrir_selector_proveedor(self, proveedores):
+        if not proveedores:
+            messagebox.showinfo("Sin datos", "Todavía no hay clientes/proveedores registrados.")
+            return
+        items = [
+            (f"{p['codigo']} — {p['nombre']}", p)
+            for p in sorted(proveedores, key=lambda p: p["nombre"])
+        ]
+        DialogoSeleccion(
+            self, titulo="Seleccionar Cliente/Proveedor",
+            items=items, on_elegido=self._seleccionar_proveedor,
+        )
+
+    def _seleccionar_proveedor(self, proveedor):
+        self._proveedor_seleccionado = proveedor
+        self._entry_cod_proveedor.delete(0, "end")
+        self._entry_cod_proveedor.insert(0, proveedor["codigo"])
+        self._entry_empresa_cp.delete(0, "end")
+        self._entry_empresa_cp.insert(0, proveedor["nombre"])
+        self._lbl_proveedor_info.configure(
+            text=f"✓ Proveedor registrado  |  {proveedor.get('telefono') or 'sin teléfono'}",
+            text_color=UI["color_success"]
+        )
 
     # ----------------------------------------------------------
     def _toggle_peso_manual(self):
@@ -720,7 +901,7 @@ class PesajeEntradaView(ctk.CTkFrame):
             return
 
         # Vehículo
-        placa_raw = self._combo_vehiculo.get().strip()
+        placa_raw = self._entry_vehiculo.get().strip()
         if not placa_raw:
             messagebox.showerror("Validación", "Debe seleccionar o ingresar la placa del vehículo.")
             return
@@ -827,9 +1008,9 @@ class PesajeEntradaView(ctk.CTkFrame):
 
     # ----------------------------------------------------------
     def _limpiar_formulario(self):
-        self._tipo_var.set("PESAJE GENERAL")
-        self._cargar_productos("GENERAL")
-        self._combo_vehiculo.set("")
+        self._tipo_var.set("PRODUCTO TERMINADO")
+        self._cargar_productos("PRODUCTO_TERMINADO")
+        self._entry_vehiculo.delete(0, "end")
         self._vehiculo_seleccionado = None
         self._lbl_vehiculo_info.configure(text="")
         self._entry_cedula.delete(0, "end")
