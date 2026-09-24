@@ -1,4 +1,8 @@
-# Spec: Web de Supervisión (solo lectura)
+# Spec: Web de Supervisión
+
+> **2026-09-24:** deja de ser 100% de solo lectura: Centro de Costos
+> aprueba/rechaza desde acá. Ver "Alcance ampliado (2026-09-24)" y
+> Boundaries. Lo demás sigue siendo de solo lectura.
 
 Fase Specify de `spec-driven-development`. Precedida por `idea-refine`
 (ver `docs/ideas/web-supervision.md` para el proceso de decisión
@@ -26,6 +30,33 @@ pesaje y decisión real.
 - Cero endpoints nuevos de escritura. Cero cambios a los endpoints que
   ya usan las apps de escritorio (solo endpoints nuevos, aditivos).
 - Los 62 tests de `backend/tests/` siguen pasando sin cambios.
+
+### Alcance ampliado (2026-09-24): Costos decide desde la web
+
+Decisión explícita del usuario ("quiero que Costos tenga también acceso
+por si quieren aprobar mediante web sin abrir la aplicación de
+escritorio") -- es exactamente el caso que Boundaries dejaba reservado
+a "una decisión nueva y explícita".
+
+- **Login para Centro de Costos (nivel 4)** además de Admin/Supervisor.
+  El Operador de Romana (3) sigue sin entrar: trabaja en la estación de
+  la báscula.
+- **Aprobar / rechazar** desde la pantalla Costos, con los endpoints que
+  ya usa el escritorio (`POST /pesadas/{id}/aprobar` y `/rechazar`,
+  permiso `centro_costos`, niveles 1-2-4). Sin endpoints nuevos: el
+  backend sigue siendo la autoridad del permiso y de la transición de
+  estado.
+- **Secciones por permiso** (`web/src/utils/permisos.ts`, espejo de
+  `services/auth_service.PERMISOS`): Pesajes en vivo y Estadísticas
+  para todos; Tickets (`reportes_ver`) y Maestros (`maestros_ver`) no
+  los ve nivel 4, porque el backend tampoco se los permite.
+- **Detalle de cada pesada** (pesos, recorrido por etapas con fecha y
+  usuario, datos de vehículo/chofer/transportista/proveedor, ticket
+  PDF), **historial de tickets** buscable y **Maestros** de solo
+  lectura (vehículos, choferes, proveedores, transportistas). No hay
+  tabla de auditoría: el recorrido se arma con las fechas/usuarios que
+  guarda la pesada; si se rechazó y re-capturó, solo queda la última
+  captura.
 
 ### Alcance ampliado (2026-09-22, a pedido del usuario)
 
@@ -173,12 +204,12 @@ export function GraficoTiempoLiberacion({ datos }: { datos: PuntoSerie[] }) {
 
 ## Boundaries
 
-- **Siempre**: la única llamada no-GET desde `web/` es
-  `POST /api/v1/auth/login` (autenticación — aunque técnicamente
-  escribe `last_login` en la base, no toca datos del negocio). Ningún
-  otro POST/PUT/PATCH/DELETE, ni un botón, ni un formulario. Si algún
-  día "Costos" necesita decidir desde la web, es una decisión nueva y
-  explícita, no un agregado silencioso. *(Corregido en la Tarea 2: la
+- **Siempre**: las únicas llamadas no-GET desde `web/` son
+  `POST /api/v1/auth/login` y, desde el 2026-09-24, las decisiones de
+  Centro de Costos (`POST /pesadas/{id}/aprobar` y `/rechazar`, solo
+  con permiso `centro_costos`). Nada más escribe: ni entradas, ni
+  capturas, ni anulaciones, ni maestros. Cualquier otra escritura desde
+  la web es una decisión nueva y explícita, no un agregado silencioso. *(Corregido en la Tarea 2: la
   versión original decía "ningún POST", que el propio login ya
   incumplía.)*
 - **Preguntar antes**: cualquier dependencia npm nueva fuera de

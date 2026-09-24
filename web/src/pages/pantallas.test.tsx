@@ -1,8 +1,6 @@
 import { fireEvent, render, screen, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import type { Sesion } from '../types/auth'
-import type { Pesada } from '../types/pesada'
-import { Costos } from './Costos'
+import { ESTADISTICAS, instalarBackendFalso, pesada, sesionDe, type Llamada } from '../pruebas'
 import { Dashboard } from './Dashboard'
 import { Estadisticas } from './Estadisticas'
 
@@ -18,75 +16,7 @@ vi.mock('../components/Graficos', () => ({
   default: () => <div>panel de gráficos</div>,
 }))
 
-class WebSocketFalso {
-  onopen: (() => void) | null = null
-  onclose: (() => void) | null = null
-  onerror: (() => void) | null = null
-  onmessage: ((e: { data: string }) => void) | null = null
-  close() {}
-}
-
-const sesion: Sesion = {
-  token: 'token-de-prueba',
-  usuario: {
-    id: 1,
-    username: 'supervisor',
-    nombre_completo: 'Supervisor de Planta',
-    nivel: 2,
-    activo: true,
-    last_login: null,
-  },
-  nivelNombre: 'Supervisor',
-  expiraEn: Date.now() + 3_600_000,
-}
-
-function pesada(parcial: Partial<Pesada>): Pesada {
-  return {
-    id: 1,
-    numero_ticket: 'TK-000001',
-    estado: 'en_planta',
-    tipo_pesaje: 'PRODUCTO_TERMINADO',
-    fecha_entrada: new Date().toISOString(),
-    fecha_captura: new Date().toISOString(),
-    fecha_aprobacion: null,
-    fecha_salida: null,
-    peso_entrada: 10_000,
-    peso_bruto: 20_000,
-    peso_tara: 10_000,
-    peso_neto: 10_000,
-    codigo_viaje: '150',
-    peso_guia: 12_000,
-    bultos: 15,
-    auto_aprobado: false,
-    es_manual: false,
-    empresa_transportista: null,
-    empresa_cliente_proveedor: 'Farmatodo',
-    vehiculo: { placa: 'ABC-123', descripcion: null },
-    producto: { codigo: '001', nombre: 'Producto Terminado' },
-    ...parcial,
-  }
-}
-
-const ESTADISTICAS = {
-  dias: 14,
-  generado: new Date().toISOString(),
-  kpis: {
-    en_planta: 1,
-    pendientes_aprobacion: 1,
-    completadas_hoy: 4,
-    neto_hoy_kg: 40_000,
-    minutos_promedio_hoy: 135,
-    porcentaje_auto_aprobadas: 62.5,
-  },
-  serie_diaria: [
-    { fecha: '2026-09-21', completadas: 2, minutos_promedio: 120 },
-    { fecha: '2026-09-22', completadas: 4, minutos_promedio: 135 },
-  ],
-  distribucion_tipo: [
-    { tipo: 'PRODUCTO_TERMINADO', cantidad: 5 },
-    { tipo: 'GENERAL', cantidad: 1 },
-  ],
-}
+const sesion = sesionDe(2)
 
 // Ojo con el orden: 'estadisticas/series' y 'kardex/buscar' se buscan
 // antes que las rutas de listados, y 'completadas' va último porque
@@ -105,19 +35,10 @@ const POR_RUTA: Record<string, unknown> = {
   completadas: [pesada({ id: 4, numero_ticket: 'TK-COMPLETADA' })],
 }
 
-let llamadas: { url: string; opciones?: RequestInit }[] = []
+let llamadas: Llamada[] = []
 
 beforeEach(() => {
-  llamadas = []
-  vi.stubGlobal('WebSocket', WebSocketFalso)
-  vi.stubGlobal(
-    'fetch',
-    vi.fn((url: string, opciones?: RequestInit) => {
-      llamadas.push({ url, opciones })
-      const clave = Object.keys(POR_RUTA).find((k) => url.includes(k))
-      return Promise.resolve(new Response(JSON.stringify(clave ? POR_RUTA[clave] : []), { status: 200 }))
-    }),
-  )
+  llamadas = instalarBackendFalso(POR_RUTA)
 })
 
 afterEach(() => {
@@ -204,6 +125,24 @@ describe('Flujo de pesaje', () => {
   })
 })
 
+describe('Centro de Costos en la web (nivel 4)', () => {
+  it('ve el tablero sin pedir el kardex, que no tiene permitido', async () => {
+    render(<Dashboard {...props} sesion={sesionDe(4)} />)
+
+    expect(await screen.findByText('TK-EN-PLANTA')).toBeDefined()
+    expect(llamadas.some((l) => l.url.includes('kardex'))).toBe(false)
+  })
+
+  it('en el sidebar ve Costos pero no Tickets ni Maestros', async () => {
+    render(<Dashboard {...props} sesion={sesionDe(4)} />)
+    await screen.findByText('TK-EN-PLANTA')
+
+    expect(screen.getByRole('button', { name: 'Costos' })).toBeDefined()
+    expect(screen.queryByRole('button', { name: 'Tickets' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Maestros' })).toBeNull()
+  })
+})
+
 describe('Estadísticas', () => {
   it('muestra los KPIs del período y los gráficos', async () => {
     render(<Estadisticas {...props} pagina="estadisticas" />)
@@ -213,35 +152,5 @@ describe('Estadísticas', () => {
     expect(screen.getByText('Pesadas cerradas')).toBeDefined()
     expect(screen.getByText('6')).toBeDefined() // 2 + 4 de la serie
     expect(await screen.findByText('panel de gráficos')).toBeDefined()
-  })
-})
-
-describe('Costos', () => {
-  it('muestra la cola con la diferencia contra la guía ya calculada', async () => {
-    render(<Costos {...props} pagina="costos" />)
-
-    // Una vez en la tabla y otra en la card "Más antigua en cola".
-    expect(await screen.findAllByText('TK-PENDIENTE')).toHaveLength(2)
-    // 10.000 vs guía 12.000 = 16,67% fuera de tolerancia
-    expect(screen.getByText('16.67 %')).toBeDefined()
-    expect(screen.getByText('TK-AUTO')).toBeDefined()
-  })
-
-  it('no ofrece ninguna acción de decisión (es solo lectura)', async () => {
-    render(<Costos {...props} pagina="costos" />)
-    await screen.findAllByText('TK-PENDIENTE')
-
-    const textos = screen.getAllByRole('button').map((b) => b.textContent ?? '')
-    expect(textos.some((t) => /aprobar|rechazar|anular/i.test(t))).toBe(false)
-  })
-
-  it('solo hace lecturas: ningún request con método de escritura', async () => {
-    render(<Costos {...props} pagina="costos" />)
-    await screen.findAllByText('TK-PENDIENTE')
-
-    for (const { opciones } of llamadas) {
-      expect(opciones?.method ?? 'GET').toBe('GET')
-    }
-    expect(llamadas.length).toBeGreaterThan(0)
   })
 })

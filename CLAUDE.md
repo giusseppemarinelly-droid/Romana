@@ -33,7 +33,7 @@ en_planta -> pendiente_aprobacion -> aprobado/rechazado -> completado   (+ anula
 
 - `en_planta`: camión entró, primer peso capturado (Tara), esperando ser cargado.
 - `pendiente_aprobacion`: 2° peso capturado por Romana (pre-pesaje, camión cargado), esperando aprobación de Centro de Costos.
-- `aprobado` / `rechazado`: decisión de Centro de Costos; si rechaza, vuelve a capturar peso.
+- `aprobado` / `rechazado`: decisión de Centro de Costos; si rechaza, vuelve a capturar peso. El rechazo exige motivo (`motivo_rechazo`, mínimo 3 caracteres); al aprobar se puede dejar un comentario opcional (`comentario_aprobacion`, migración `b8c9d0e1f2a3`, 2026-09-24) -- los dos se escriben en el mismo campo "Comentario de la decisión" tanto en la estación de escritorio como en la web, y Romana ve el comentario en Completar Pesaje. `POST /aprobar` acepta el cuerpo `{"comentario"}` como opcional: una estación sin actualizar que manda el POST vacío sigue funcionando.
 - `completado`: Romana captura el **peso final** (3er pesaje, `Pesada.peso_final`) y llena los datos finales, proceso cerrado — **inmutable, ni siquiera se puede anular**.
 - `anulado`: cancelado por cualquier motivo (excepto desde `completado`).
 
@@ -68,10 +68,10 @@ Un vehículo no puede tener 2 pesadas activas a la vez — se aplica con un índ
 
 ### Web de supervisión (`web/`)
 
-- Tercer cliente del mismo backend (React 19 + TypeScript + Vite + Tailwind v4), **solo lectura**, para Admin/Supervisor. Spec en `docs/SPEC-web-supervision.md`, plan y tareas en `tasks/plan.md` / `tasks/todo.md`. No reemplaza nada de la app de escritorio.
+- Tercer cliente del mismo backend (React 19 + TypeScript + Vite + Tailwind v4) para Admin/Supervisor y Centro de Costos (nivel 4, desde 2026-09-24). Casi todo es de solo lectura; la excepción es aprobar/rechazar en Costos. Spec en `docs/SPEC-web-supervision.md`, plan y tareas en `tasks/plan.md` / `tasks/todo.md`. No reemplaza nada de la app de escritorio.
 - La sirve el propio backend (`montar_web_supervision` en `backend/main.py`) bajo `/supervision/`, **no en `/`**: montada en la raíz, el StaticFiles se quedaba con los requests que ninguna ruta matcheaba del todo y un método equivocado en la API pasaba de 405 a 404. Si `web/dist` no está compilado, el backend arranca igual y no la sirve.
 - **`web/dist/` se versiona en git a propósito** (el servidor de planta no tiene ni necesita Node). Si se toca `web/src`, correr `npm run build` (Node 24: `nvm use` dentro de `web/`) y commitear `web/dist/` **en el mismo commit** — si no, el servidor sirve la versión vieja sin avisar. `.gitattributes` lo marca `binary` (el git de Windows tiene `core.autocrlf=true`).
-- La única llamada no-GET de la web es `POST /api/v1/auth/login`. Nada de escritura de datos del negocio desde ahí.
+- Las únicas llamadas no-GET de la web son `POST /api/v1/auth/login` y aprobar/rechazar (`POST /pesadas/{id}/aprobar|rechazar`, permiso `centro_costos`). Nada más escribe datos del negocio desde ahí. Las secciones y botones se filtran con `web/src/utils/permisos.ts`, espejo de `services/auth_service.PERMISOS` -- si cambia un permiso allá, cambiarlo acá (el backend igual es la autoridad real).
 - Diseño: dos temas -- **claro por defecto con la paleta de `config.py` → UI** (si cambia un color allá, cambiarlo en `web/src/index.css` y `web/src/tema.ts`) y oscuro opcional (`[data-tema="oscuro"]`, botón en el sidebar). Escala cerrada en `web/src/index.css` (`@theme` borra los colores/tamaños/radios por defecto de Tailwind; `--spacing: 8px`, así que `p-2` = 16px, no 8). Los colores para Recharts están duplicados en `web/src/tema.ts`. `web/src/diseno.test.ts` falla si aparece un hex, un valor arbitrario `[..]`, un espaciado fraccionario o una sombra en los componentes. Detalle en la sección "Sistema de diseño" del spec.
 
 ### Hardware (`hardware/`)

@@ -1,25 +1,23 @@
-export type Pagina = 'tablero' | 'estadisticas' | 'costos'
+import { PAGINAS, paginasPara, type Pagina } from '../utils/paginas'
 
-const PAGINAS: { clave: Pagina; texto: string }[] = [
-  { clave: 'tablero', texto: 'Pesajes en vivo' },
-  { clave: 'estadisticas', texto: 'Estadísticas' },
-  { clave: 'costos', texto: 'Costos' },
-]
+export type { Pagina }
 
-// Navegación por estado y no con un router: son tres pantallas y meter
-// react-router sería una dependencia nueva fuera de lo acordado en el
-// spec. La contra: no hay enlaces directos a cada pantalla ni botón
-// "atrás" del navegador. Si aparecen más pantallas, conviene revisarlo.
+// Navegación por estado y no con un router: meter react-router sería una
+// dependencia nueva fuera de lo acordado en el spec. La contra: no hay
+// enlaces directos a cada pantalla ni botón "atrás" del navegador.
 export function Navegacion({
   actual,
+  nivel,
   onCambiar,
 }: {
   actual: Pagina
+  nivel: number
   onCambiar: (pagina: Pagina) => void
 }) {
+  const visibles = paginasPara(nivel)
   return (
     <nav className="flex flex-col gap-1">
-      {PAGINAS.map(({ clave, texto }) => {
+      {PAGINAS.filter((p) => visibles.includes(p.clave)).map(({ clave, texto }) => {
         const activa = clave === actual
         return (
           <button

@@ -41,7 +41,7 @@ export function BarraLateral({
         </div>
       </div>
 
-      <Navegacion actual={pagina} onCambiar={onCambiarPagina} />
+      <Navegacion actual={pagina} nivel={sesion.usuario.nivel} onCambiar={onCambiarPagina} />
 
       <div className="flex flex-col gap-2 border-t border-lateral-borde pt-3 md:mt-auto">
         <EstadoConexion conectado={conectado} actualizado={actualizado} />

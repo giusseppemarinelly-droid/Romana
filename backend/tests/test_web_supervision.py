@@ -83,3 +83,25 @@ def test_app_real_mantiene_el_405_de_la_api(client):
     r = client.get("/api/v1/auth/login")
     assert r.status_code == 405
     assert r.json() == {"detail": "Method Not Allowed"}
+
+
+def test_el_html_nunca_queda_viejo_en_el_navegador(tmp_path):
+    # Sin Cache-Control, el navegador reusaba el index.html de antes de
+    # un `npm run build` y seguía mostrando la versión vieja aunque el
+    # servidor ya sirviera la nueva (pasó en la prueba del 2026-09-24).
+    app = _app_con_una_ruta_de_api()
+    montar_web_supervision(app, _dist_falso(tmp_path))
+    c = TestClient(app)
+
+    for ruta in ("/supervision/", "/supervision/index.html"):
+        assert c.get(ruta).headers.get("cache-control") == "no-cache"
+
+
+def test_los_assets_con_hash_si_se_cachean(tmp_path):
+    # Vite les pone un hash del contenido al nombre: si cambian, cambia
+    # el nombre, así que se pueden guardar para siempre.
+    app = _app_con_una_ruta_de_api()
+    montar_web_supervision(app, _dist_falso(tmp_path))
+
+    r = TestClient(app).get("/supervision/assets/app.js")
+    assert r.headers.get("cache-control") == "public, max-age=31536000, immutable"

@@ -67,11 +67,19 @@ describe('iniciarSesion', () => {
     })
   })
 
-  it.each([3, 4])('rechaza nivel %i aunque el backend haya aceptado las credenciales', async (nivel) => {
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(respuestaOk(nivel)))
+  it('acepta Centro de Costos (nivel 4): aprueba desde la web', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(respuestaOk(4)))
+
+    await expect(iniciarSesion('centrocostos', 'cc123')).resolves.toMatchObject({
+      usuario: { nivel: 4 },
+    })
+  })
+
+  it('rechaza al Operador de Romana (nivel 3) aunque el backend haya aceptado las credenciales', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(respuestaOk(3)))
 
     await expect(iniciarSesion('operador', 'oper123')).rejects.toThrow(
-      'Esta vista es solo para Administradores y Supervisores.',
+      'El Operador de Romana trabaja desde la estación de la báscula.',
     )
   })
 

@@ -6,11 +6,38 @@
 export interface VehiculoDePesada {
   placa: string
   descripcion: string | null
+  tipo?: string | null
 }
 
 export interface ProductoDePesada {
   codigo: string
   nombre: string
+}
+
+/** backend/schemas/maestros.py → ConductorOut (lo que usa el detalle). */
+export interface ConductorDePesada {
+  nombre: string
+  documento: string
+  tipo_documento?: string | null
+}
+
+/** ProveedorOut y EmpresaTransportistaOut tienen la misma forma. */
+export interface EmpresaDePesada {
+  codigo: string
+  nombre: string
+  rif?: string | null
+}
+
+export interface DestinoDePesada {
+  codigo: string
+  nombre: string
+}
+
+/** backend/schemas/auth.py → UsuarioOut, reducido a lo que se muestra. */
+export interface UsuarioDePesada {
+  id: number
+  username: string
+  nombre_completo: string
 }
 
 /** Los cuatro estados que muestra el tablero (hay más: rechazado, anulado). */
@@ -44,4 +71,35 @@ export interface Pesada {
 
   vehiculo: VehiculoDePesada | null
   producto: ProductoDePesada | null
+
+  // --- Detalle completo (GET /pesadas/{id}, también el kardex) ---
+  // Opcionales a propósito: los listados del tablero y los datos de
+  // prueba no siempre los traen, y el detalle tiene que tolerar su
+  // ausencia igual que un null (pesadas viejas, anteriores al campo).
+  peso_final?: number | null
+  anulada?: boolean
+  cedula_conductor_libre?: string | null
+  procedencia?: string | null
+  orden_compra?: string | null
+  cantidad?: number | null
+  precintos?: string | null
+  observaciones?: string | null
+  motivo_rechazo?: string | null
+  /** Por qué aprobó Costos (opcional). */
+  comentario_aprobacion?: string | null
+  motivo_anulacion?: string | null
+  fecha_anulacion?: string | null
+
+  conductor?: ConductorDePesada | null
+  proveedor?: EmpresaDePesada | null
+  transportista?: EmpresaDePesada | null
+  destino?: DestinoDePesada | null
+
+  // Quién hizo cada etapa: con esto y las fechas se arma el recorrido
+  // (el backend no guarda un historial de auditoría aparte).
+  usuario_entrada?: UsuarioDePesada | null
+  usuario_salida?: UsuarioDePesada | null
+  aprobado_por?: UsuarioDePesada | null
+  usuario_completado?: UsuarioDePesada | null
+  anulado_por?: UsuarioDePesada | null
 }

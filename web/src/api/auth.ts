@@ -1,10 +1,12 @@
 import type { RespuestaLogin, Sesion } from '../types/auth'
 
-// Solo Administrador (1) y Supervisor (2) -- ver services/auth_service.py.
-// El backend igual protege cada endpoint por su cuenta; esto es para no
-// dejar entrar a Operador/Centro de Costos a una vista que no es para
-// ellos, con un mensaje claro en vez de pantallas vacías o errores 403.
-const NIVELES_PERMITIDOS = [1, 2]
+// Administrador (1), Supervisor (2) y Centro de Costos (4, para aprobar
+// desde la web sin abrir la app de escritorio) -- ver
+// services/auth_service.py. El Operador de Romana (3) trabaja en la
+// estación de la báscula, no acá. El backend igual protege cada endpoint
+// por su cuenta; esto es para darle un mensaje claro en vez de pantallas
+// vacías o errores 403.
+const NIVELES_PERMITIDOS = [1, 2, 4]
 
 export class ErrorLogin extends Error {}
 
@@ -30,7 +32,7 @@ export async function iniciarSesion(username: string, password: string): Promise
 
   const datos = (await respuesta.json()) as RespuestaLogin
   if (!NIVELES_PERMITIDOS.includes(datos.usuario.nivel)) {
-    throw new ErrorLogin('Esta vista es solo para Administradores y Supervisores.')
+    throw new ErrorLogin('Esta vista es para Administradores, Supervisores y Centro de Costos. El Operador de Romana trabaja desde la estación de la báscula.')
   }
 
   return {

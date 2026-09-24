@@ -92,6 +92,29 @@ def health():
 RUTA_WEB_SUPERVISION = "/supervision"
 
 
+class _EstaticosWeb(StaticFiles):
+    """
+    StaticFiles con cabeceras de caché pensadas para un build de Vite.
+
+    - HTML (index.html): `no-cache` -- el navegador lo revalida en cada
+      visita. Sin esto, después de un `npm run build` seguía mostrando la
+      versión vieja aunque el servidor ya sirviera la nueva.
+    - assets/: el nombre lleva un hash del contenido (index-BT98wnq4.js),
+      si el archivo cambia cambia el nombre, así que se cachean para
+      siempre y no se vuelven a bajar en cada visita.
+    """
+
+    async def get_response(self, path, scope):
+        respuesta = await super().get_response(path, scope)
+        # En Windows Starlette entrega la ruta con "\\" (os.path.normpath).
+        ruta = path.replace("\\", "/")
+        if respuesta.media_type == "text/html" or ruta.endswith(".html") or ruta in ("", "."):
+            respuesta.headers["Cache-Control"] = "no-cache"
+        elif ruta.startswith("assets/") and respuesta.status_code == 200:
+            respuesta.headers["Cache-Control"] = "public, max-age=31536000, immutable"
+        return respuesta
+
+
 def montar_web_supervision(app: FastAPI, directorio: str) -> bool:
     """
     Sirve la web de supervisión (web/dist, React compilado) desde este
@@ -115,7 +138,7 @@ def montar_web_supervision(app: FastAPI, directorio: str) -> bool:
               "Para servirla, correr `npm run build` en web/.")
         return False
 
-    app.mount(RUTA_WEB_SUPERVISION, StaticFiles(directory=directorio, html=True),
+    app.mount(RUTA_WEB_SUPERVISION, _EstaticosWeb(directory=directorio, html=True),
               name="web_supervision")
 
     # api_route con HEAD explícito: @app.get de FastAPI, a diferencia de
