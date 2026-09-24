@@ -176,8 +176,12 @@ class ApiClient:
             resultado["auto_aprobado"] = resultado["pesada"]["auto_aprobado"]
         return resultado
 
-    def aprobar_pesada(self, pesada_id: int) -> dict:
-        return self._con_pesada(self.post(f"/api/v1/pesadas/{pesada_id}/aprobar"))
+    def aprobar_pesada(self, pesada_id: int, comentario: str = "") -> dict:
+        # comentario opcional: por qué aprobó CC (el backend guarda None si
+        # viene en blanco).
+        return self._con_pesada(self.post(
+            f"/api/v1/pesadas/{pesada_id}/aprobar", json={"comentario": comentario},
+        ))
 
     def rechazar_pesada(self, pesada_id: int, motivo: str) -> dict:
         return self._con_pesada(self.post(f"/api/v1/pesadas/{pesada_id}/rechazar", json={"motivo": motivo}))

@@ -314,6 +314,16 @@ class CompletarPesajeView(ctk.CTkFrame):
             text_color=UI["color_success"]
         ).grid(row=row, column=0, sticky="w", pady=(0, 6)); row += 1
 
+        # Por qué aprobó CC (opcional, ver aprobar_pesada) -- útil si hay
+        # algo que Romana tenga que saber antes de dejar salir el camión.
+        if p.get("comentario_aprobacion"):
+            ctk.CTkLabel(
+                self._form_frame,
+                text=f"Comentario de Costos: {p['comentario_aprobacion']}",
+                font=ctk.CTkFont(family=UI["fuente"], size=11),
+                text_color=UI["color_text"], wraplength=320, justify="left",
+            ).grid(row=row, column=0, sticky="w", pady=(0, 6)); row += 1
+
         # Datos ya registrados (solo lectura)
         info_frame = ctk.CTkFrame(self._form_frame, fg_color=UI["color_bg"],
                                    corner_radius=8)

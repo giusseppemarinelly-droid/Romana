@@ -14,7 +14,12 @@ from client.ws_client import WsClient
 from gui.async_utils import cargar_en_hilo
 from gui.components.ui_kit import (
     Card, titulo_h2, boton_primario, boton_secundario, boton_peligro, ocultar_scrollbar,
+    etiqueta_campo, texto_ayuda,
 )
+
+# Mismo mínimo que exige rechazar_pesada() en services/pesaje_service.py:
+# con menos, el backend responde 400 igual -- mejor avisarlo antes.
+MOTIVO_RECHAZO_MINIMO = 3
 
 
 def _fecha_hora(iso_str):
@@ -315,6 +320,25 @@ class CentroCostosView(ctk.CTkFrame):
                       fg_color=UI["color_border"]).grid(
             row=row, column=0, sticky="ew", pady=10); row += 1
 
+        # Comentario de la decisión: un solo campo para las dos acciones,
+        # escrito justo antes de apretar. Al aprobar es opcional (por qué se
+        # acepta, ej. una diferencia con la guía que está justificada); al
+        # rechazar es el motivo, obligatorio -- Romana lo ve al re-pesar.
+        etiqueta_campo(self._detalle_frame, "Comentario de la decisión").grid(
+            row=row, column=0, sticky="w"); row += 1
+        texto_ayuda(
+            self._detalle_frame, "Opcional al aprobar · obligatorio al rechazar",
+        ).grid(row=row, column=0, sticky="w", pady=(0, 4)); row += 1
+
+        self._txt_comentario = ctk.CTkTextbox(
+            self._detalle_frame, height=72, wrap="word",
+            font=ctk.CTkFont(family=UI["fuente"], size=UI["fuente_body"]),
+            fg_color=UI["color_input_bg"], text_color=UI["color_text"],
+            border_color=UI["color_border"], border_width=1,
+            corner_radius=UI["radio_control"],
+        )
+        self._txt_comentario.grid(row=row, column=0, sticky="ew", pady=(0, 12)); row += 1
+
         # Botón APROBAR
         boton_primario(
             self._detalle_frame, "✅  APROBAR", command=self._aprobar, height=50,
@@ -358,19 +382,25 @@ class CentroCostosView(ctk.CTkFrame):
         ).grid(row=1, column=col, padx=8, pady=(0, 10))
 
     # ----------------------------------------------------------
+    def _comentario(self) -> str:
+        return self._txt_comentario.get("1.0", "end").strip()
+
+    # ----------------------------------------------------------
     def _aprobar(self):
         if not self._pesada_seleccionada:
             return
 
+        comentario = self._comentario()
         if not messagebox.askyesno(
             "Confirmar aprobación",
             f"¿Aprobar la pesada {self._pesada_seleccionada['numero_ticket']}?\n\n"
-            f"Neto: {float(self._pesada_seleccionada['peso_neto'] or 0):,.0f} KG\n\n"
+            f"Neto: {float(self._pesada_seleccionada['peso_neto'] or 0):,.0f} KG\n"
+            f"Comentario: {comentario or '(sin comentario)'}\n\n"
             "Al aprobar, la Romana podrá completar los datos finales."
         ):
             return
 
-        resultado = api_client.aprobar_pesada(self._pesada_seleccionada["id"])
+        resultado = api_client.aprobar_pesada(self._pesada_seleccionada["id"], comentario)
 
         if resultado["exito"]:
             messagebox.showinfo(
@@ -387,13 +417,22 @@ class CentroCostosView(ctk.CTkFrame):
         if not self._pesada_seleccionada:
             return
 
-        dialog = ctk.CTkInputDialog(
-            text=f"Motivo de rechazo para ticket {self._pesada_seleccionada['numero_ticket']}:",
-            title="Rechazar pesada"
-        )
-        motivo = dialog.get_input()
+        motivo = self._comentario()
+        if len(motivo) < MOTIVO_RECHAZO_MINIMO:
+            messagebox.showwarning(
+                "Falta el motivo",
+                "Para rechazar, escriba el motivo en \"Comentario de la decisión\".\n"
+                "La Romana lo va a ver al volver a pesar el camión.",
+            )
+            self._txt_comentario.focus_set()
+            return
 
-        if not motivo:
+        if not messagebox.askyesno(
+            "Confirmar rechazo",
+            f"¿Rechazar la pesada {self._pesada_seleccionada['numero_ticket']}?\n\n"
+            f"Motivo: {motivo}\n\n"
+            "La Romana deberá volver a capturar el peso."
+        ):
             return
 
         resultado = api_client.rechazar_pesada(self._pesada_seleccionada["id"], motivo)

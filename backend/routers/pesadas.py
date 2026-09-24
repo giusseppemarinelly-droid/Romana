@@ -9,7 +9,7 @@ from starlette.concurrency import run_in_threadpool
 
 from backend.deps import get_current_user, requiere_permiso
 from backend.schemas.pesada import (
-    PesadaOut, EntradaIn, SalidaIn, RechazoIn, CompletarIn, AnularIn,
+    PesadaOut, EntradaIn, SalidaIn, RechazoIn, AprobacionIn, CompletarIn, AnularIn,
     CorteIn, CorteOut, EstadisticasOut, EstadisticasSeriesOut,
 )
 from backend.ws.manager import manager
@@ -69,8 +69,17 @@ async def capturar_salida(pesada_id: int, body: SalidaIn, usuario: Usuario = Dep
 
 
 @router.post("/{pesada_id}/aprobar", response_model=PesadaOut, dependencies=[Depends(requiere_permiso("centro_costos"))])
-async def aprobar(pesada_id: int, usuario: Usuario = Depends(get_current_user)):
-    resultado = await run_in_threadpool(pesaje_service.aprobar_pesada, pesada_id, usuario_id=usuario.id)
+async def aprobar(
+    pesada_id: int,
+    body: Optional[AprobacionIn] = None,
+    usuario: Usuario = Depends(get_current_user),
+):
+    # body opcional: el comentario no es obligatorio, y las estaciones de
+    # escritorio anteriores a este cambio mandan el POST sin cuerpo.
+    resultado = await run_in_threadpool(
+        pesaje_service.aprobar_pesada, pesada_id, usuario_id=usuario.id,
+        comentario=body.comentario if body else None,
+    )
     _fallo_si_no_exito(resultado)
     # Evento clave: dispara el refresco automático en la estación de Romana.
     await manager.broadcast({"tipo": "pesada_aprobada", "pesada_id": pesada_id})

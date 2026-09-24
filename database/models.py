@@ -345,6 +345,9 @@ class Pesada(Base):
     precintos                = Column(String(200), nullable=True)
     observaciones            = Column(Text, nullable=True)
     motivo_rechazo           = Column(Text, nullable=True)
+    # Por qué aprobó Centro de Costos (opcional, ej. una diferencia contra
+    # la guía que está justificada). El rechazo ya exige motivo_rechazo.
+    comentario_aprobacion    = Column(Text, nullable=True)
 
     # --- Relaciones con maestros ---
     vehiculo_id              = Column(Integer, ForeignKey("vehiculos.id"),    nullable=False)

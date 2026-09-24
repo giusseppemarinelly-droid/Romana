@@ -49,6 +49,7 @@ class PesadaOut(BaseModel):
     precintos: Optional[str] = None
     observaciones: Optional[str] = None
     motivo_rechazo: Optional[str] = None
+    comentario_aprobacion: Optional[str] = None
     motivo_anulacion: Optional[str] = None
     anulada: bool
 
@@ -99,6 +100,12 @@ class SalidaIn(BaseModel):
 
 class RechazoIn(BaseModel):
     motivo: str
+
+
+class AprobacionIn(BaseModel):
+    # Opcional: aprobar sin decir nada sigue siendo válido (y una estación
+    # de escritorio sin actualizar manda el POST sin cuerpo).
+    comentario: Optional[str] = None
 
 
 class CompletarIn(BaseModel):

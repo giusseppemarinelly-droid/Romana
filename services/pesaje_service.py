@@ -632,10 +632,15 @@ def capturar_peso_salida(
 # ============================================================
 # PASO 3a: APROBAR (Centro de Costos)
 # ============================================================
-def aprobar_pesada(pesada_id: int, usuario_id: Optional[int] = None) -> dict:
+def aprobar_pesada(pesada_id: int, usuario_id: Optional[int] = None,
+                   comentario: Optional[str] = None) -> dict:
     """
     PASO 3a: Centro de Costos aprueba la pesada.
     Estado resultante: "aprobado"
+
+    `comentario` (opcional): por qué se aprobó. Uno en blanco se guarda
+    como None, no como cadena vacía -- "no dijo nada" se ve igual venga
+    de donde venga.
     """
     db = SessionLocal()
     try:
@@ -653,6 +658,7 @@ def aprobar_pesada(pesada_id: int, usuario_id: Optional[int] = None) -> dict:
         pesada.estado = "aprobado"
         pesada.aprobado_por_id = usuario_id
         pesada.fecha_aprobacion = datetime.now()
+        pesada.comentario_aprobacion = (comentario or "").strip() or None
 
         db.commit()
         pesada = db.query(Pesada).options(*_pesada_options()).filter_by(
